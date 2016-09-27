@@ -5,17 +5,15 @@ Created on Mon Sep 26 15:23:31 2016
 @author: jcsilva
 """
 import numpy as np
-import math
+import random
 import scipy.io.wavfile as wav
 from python_speech_features import sigproc
-from keras.utils.np_utils import to_categorical
 
 FRAME_LENGTH = .032
 FRAME_SHIFT = .008
 FS = 8000
+CONTEXT = 100
 
-CHUNK_SIZE = int((FRAME_LENGTH + 99 * FRAME_SHIFT) * FS)
-CHUNK_OVERLAP = CHUNK_SIZE / 2
 
 def squared_hann(M):
     return np.sqrt(np.hanning(M))
@@ -30,111 +28,72 @@ def stft(sig, rate):
     return np.log(np.absolute(spec))
 
 
-#def get_batches(batch_size):
-#    p1 = "LapsBM_0061.wav"
-#    rate, sig = wav.read(p1)
-#    sig = sig - np.mean(sig)
-#    sig = sig/np.max(np.abs(sig))
-#
-#    p2 = "LapsBM_0304.wav"
-#    rate2, sig2 = wav.read(p2)
-#    sig2 = sig2 - np.mean(sig2)
-#    sig2 = sig2/np.max(np.abs(sig2))
-#
-#    sig = sig[len(sig2)-6592:len(sig2)]
-#    sig2 = sig2[len(sig)-6592:len(sig)]
-#    x = sig + sig2
-#    
-#    SPEC = stft(sig, rate)
-#    SPEC2 = stft(sig2, rate)
-#    X = stft(x, rate)
-#    m = np.max(X) - 5.5 # consertar esse valor. Isso eh soh para identificar silencio!!
-#    y = np.zeros(X.shape, dtype=np.int16)
-#    y[SPEC > SPEC2] = 0
-#    y[SPEC2 >= SPEC] = 1
-#    y[X < m] = 2
-#    
-#    feats  = np.zeros((batch_size,) + X.shape)
-#    labels = np.zeros((batch_size,) + y.shape, dtype=np.int16)
-#    i = 0
-#    for k in range(1):
-#        feats[i] = X
-#        labels[i] = y
-#        i += 1
-#        if i == batch_size:
-#            i = 0
-#            yield(feats.reshape((batch_size, X.size)),
-#                  labels.reshape((batch_size, y.size)))
-#            feats = np.zeros((batch_size,) + X.shape)
-#            labels = np.zeros((batch_size,) + y.shape)
+def get_batches(min_mix=3, max_mix=3):
+    wavs = []
+    while True:
+        # Select number of files to mix
+        k = np.random.randint(min_mix, max_mix+1)
+        if(k > len(wavs)):
+            # Reading wav files list and randomizing inputs
+            wavs = []
+            f = open('wavlist')
+            for line in f:
+                wavs.append(line.strip())
+            f.close()
+            random.shuffle(wavs)
+        wavsum = None
+        sigs = []
 
-def get_signals():
-    root_prefix = "/media/data/corpora/Laps/LapsBM1.4-8k/all/LapsBM_"   
-   
-    file_num = str(np.random.randint(1,700))
-    p1 = root_prefix + file_num.rjust(4,'0') + ".wav"
-    rate, sig = wav.read(p1)
-    sig = sig - np.mean(sig)
-    sig = sig/np.max(np.abs(sig))
+        # Read selected wav files, store them individually and mix them
+        for i in range(k):
+            p = wavs.pop()
+            rate, sig = wav.read(p)
+            sig = sig - np.mean(sig)
+            sig = sig/np.max(np.abs(sig))
+            sig *= (np.random.random()*3/4 + 1/4)
+            if wavsum is None:
+                wavsum = sig
+            else:
+                wavsum = wavsum[:len(sig)] + sig[:len(wavsum)]
+            sigs.append(sig)
 
-    file_num = str(np.random.randint(1,700))
-    p2 = root_prefix + file_num.rjust(4,'0') + ".wav"
-    rate2, sig2 = wav.read(p2)
-    sig2 = sig2 - np.mean(sig2)
-    sig2 = sig2/np.max(np.abs(sig2))
+        # STFT for mixed signal
+        X = np.real(stft(wavsum, rate))
+        if len(X) <= CONTEXT:
+            continue
 
-    return sig, sig2    
+        # STFTs for individual files
+        specs = []
+        for sig in sigs:
+            specs.append(stft(sig[:len(wavsum)], rate))
+        specs = np.array(specs)
 
+        # Mask for ditching silence components
+        Y = np.zeros(X.shape + (k,))
 
-def myGenerator(n=0):
-    counter = 0 
-    
-    def condition(counter, n):
-        if n > 0:
-            return counter < n
-        else:
-            return True
-            
-    while condition(counter, n):
-        counter = counter + 1
-        s1, s2 = get_signals()
-        smallest_signal_len = len(s1) if len(s1) < len(s2) else len(s2)
-        num_chunks = math.floor( (smallest_signal_len - int(FRAME_LENGTH * FS)) / int(FRAME_SHIFT * FS) ) + 1
-        for i in range(num_chunks):
-            # seleciona um frame
-            sig  = s1[int(i*FRAME_SHIFT):int(i*FRAME_SHIFT) + CHUNK_SIZE]
-            sig2 = s2[int(i*FRAME_SHIFT):int(i*FRAME_SHIFT) + CHUNK_SIZE]
-            
-            # cria mistura            
-            x = sig + sig2
-            
-            # Espectro de magnitude
-            SPEC = stft(sig, FS)
-            SPEC2 = stft(sig2, FS)
-            X = stft(x, FS)
-            
-            # cria mascara binaria
-            m = np.max(X) - 5.5 # consertar esse valor. Isso eh soh para identificar silencio!!
-            y = np.zeros(X.shape, dtype=np.int16)
-            y[SPEC > SPEC2] = 0
-            y[SPEC2 >= SPEC] = 1
-            y[X < m] = 2
-            y = np.squeeze(y.reshape((1,-1)))
-            n_classes = np.max(y) + 1
-            
-            #if i%10==0:
-            #    print("i = " + str(i))
-            
-            # mlp
-            #yield (X.reshape((1,-1)),
-            #      to_categorical(y, NUM_CLASSES).reshape((1,-1)))
-            
-            # blstm
-            yield (X.reshape((1,X.shape[0], X.shape[1])),
-                  to_categorical(y, n_classes).reshape((1,-1)))
+        # Get dominant spectra indexes, create one-hot outputs
+        m = np.max(X) - 5.5
+        vals = np.argmax(specs, axis=0)
+        for i in range(k):
+            t = np.zeros(k)
+            t[i] = 1
+            Y[vals == i] = t
+
+        # Create mask for zeroing out gradients from silence components
+        m = np.max(X) - 5.5
+        M = np.ones(X.shape)
+        M[X < m] = [0]
+#        Y[X < m] = np.zeros(k)
+        i = 0
+
+        # Generating batches
+        while i + CONTEXT < len(X):
+            yield(X[i:i+CONTEXT].reshape((1, 100, 129)),
+                  Y[i:i+CONTEXT].reshape((1, -1)))
+            i += CONTEXT // 2
 
 
 if __name__ == "__main__":
-    a = myGenerator(1)
+    a = get_batches()
     for i,j in a:
         print(i.shape,j.shape)
