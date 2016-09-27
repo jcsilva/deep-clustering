@@ -12,10 +12,10 @@ from keras.utils.np_utils import to_categorical
 
 FRAME_LENGTH = .032
 FRAME_SHIFT = .008
-FS = 8000
+FS = 8000 # Frequency sampling (Hz)
 
-CHUNK_SIZE = int((FRAME_LENGTH + 99 * FRAME_SHIFT) * FS)
-CHUNK_OVERLAP = CHUNK_SIZE / 2
+NUM_FRAMES = 100
+CHUNK_SIZE = int((FRAME_LENGTH + (NUM_FRAMES-1) * FRAME_SHIFT) * FS)
 
 def squared_hann(M):
     return np.sqrt(np.hanning(M))
@@ -99,8 +99,8 @@ def myGenerator(n=0):
         counter = counter + 1
         s1, s2 = get_signals()
         smallest_signal_len = len(s1) if len(s1) < len(s2) else len(s2)
-        num_chunks = math.floor( (smallest_signal_len - int(FRAME_LENGTH * FS)) / int(FRAME_SHIFT * FS) ) + 1
-        for i in range(num_chunks):
+        total_frames = math.floor( (smallest_signal_len - int(FRAME_LENGTH * FS)) / int(FRAME_SHIFT * FS) ) + 1
+        for i in range(0, total_frames, NUM_FRAMES // 2):
             # seleciona um frame
             sig  = s1[int(i*FRAME_SHIFT):int(i*FRAME_SHIFT) + CHUNK_SIZE]
             sig2 = s2[int(i*FRAME_SHIFT):int(i*FRAME_SHIFT) + CHUNK_SIZE]
