@@ -7,7 +7,7 @@ Created on Mon Sep 26 15:23:31 2016
 
 import tensorflow as tf
 from keras.models import Sequential
-from keras.layers import Dense, Dropout, Activation, LSTM, Input, Bidirectional
+from keras.layers import Dense, Dropout, Activation, LSTM, Input, Bidirectional, BatchNormalization
 from keras.layers.wrappers import TimeDistributed
 from keras.layers.noise import GaussianNoise
 from keras.optimizers import SGD
@@ -73,21 +73,26 @@ def train_nnet():
 #    model.add(Activation('softmax'))
 
     model = Sequential()
-    model.add(Bidirectional(LSTM(30, return_sequences=True), input_shape=(100,129)))
-    #model.add(Dropout(0.5))
-    #model.add(GaussianNoise(0.77))    
-    model.add(Bidirectional(LSTM(30)))    
-    #model.add(GaussianNoise(0.77))
-    #model.add(Dropout(0.5))
-    model.add(Dense(INPUT_SAMPLE_SIZE * EMBEDDINGS_DIMENSION, init='uniform', activation='tanh'))
+    model.add(Bidirectional(LSTM(30, return_sequences=True),
+                            input_shape=(100,129)))
+#    model.add(BatchNormalization(mode=0))
+#    model.add(GaussianNoise(0.77))
+#    model.add(Dropout(0.5))
+    model.add(Bidirectional(LSTM(30)))
+#    model.add(BatchNormalization(mode=0))
+#    model.add(GaussianNoise(0.77))
+#    model.add(Dropout(0.5))
+    model.add(Dense(INPUT_SAMPLE_SIZE * EMBEDDINGS_DIMENSION,
+                    init='uniform', activation='tanh'))
     #model.add(TimeDistributed(Dense(EMBEDDINGS_DIMENSION)))
     #model.add(Activation('softmax'))
 
-    sgd = SGD(lr=1e-5, momentum=0.9, decay=0.0, nesterov=True)
+    sgd = SGD(lr=1e-9, momentum=0.9, decay=0.0, nesterov=True)
     model.compile(loss=affinitykmeans, optimizer=sgd)
 
-    model.fit_generator(get_batches(),  samples_per_epoch=100, nb_epoch=1, max_q_size=10)
-    #score = model.evaluate(X_test, y_test, batch_size=16)
+    model.fit_generator(get_batches('wavlist_short'),
+                        samples_per_epoch=20, nb_epoch=20, max_q_size=10)
+    # score = model.evaluate(X_test, y_test, batch_size=16)
     save_model(model, "model")
     
 def main():
@@ -98,7 +103,7 @@ def main():
     yref = []
     ypred = []
     i = 0
-    for x, y in get_batches():
+    for x, y in get_batches('wavlist'):
         i += 1
         if i % 2 == 1:
             v = loaded_model.predict(x)

@@ -28,7 +28,7 @@ def stft(sig, rate):
     return np.log(np.absolute(spec))
 
 
-def get_batches(min_mix=3, max_mix=3):
+def get_batches(wavlist, min_mix=3, max_mix=3):
     wavs = []
     while True:
         # Select number of files to mix
@@ -36,7 +36,7 @@ def get_batches(min_mix=3, max_mix=3):
         if(k > len(wavs)):
             # Reading wav files list and randomizing inputs
             wavs = []
-            f = open('wavlist')
+            f = open(wavlist)
             for line in f:
                 wavs.append(line.strip())
             f.close()
@@ -50,7 +50,7 @@ def get_batches(min_mix=3, max_mix=3):
             rate, sig = wav.read(p)
             sig = sig - np.mean(sig)
             sig = sig/np.max(np.abs(sig))
-            sig *= (np.random.random()*3/4 + 1/4)
+            sig *= (np.random.random()*1/4 + 3/4)
             if wavsum is None:
                 wavsum = sig
             else:
@@ -88,9 +88,9 @@ def get_batches(min_mix=3, max_mix=3):
 
         # Generating batches
         while i + CONTEXT < len(X):
-            yield(X[i:i+CONTEXT].reshape((1, 100, 129)),
+            yield(X[i:i+CONTEXT].reshape((1, CONTEXT, -1)),
                   Y[i:i+CONTEXT].reshape((1, -1)))
-            i += CONTEXT // 2
+            i += 1
 
 
 if __name__ == "__main__":
