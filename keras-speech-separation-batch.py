@@ -5,7 +5,7 @@ Created on Mon Sep 26 15:23:31 2016
 @author: jcsilva
 """
 
-import tensorflow as tf
+import theano as th
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Activation, LSTM, Input, Bidirectional
 from keras.layers.wrappers import TimeDistributed
@@ -42,19 +42,19 @@ def load_model(filename):
  
 def affinitykmeans(Y, V):
     def norm(tensor):
-        square_tensor = tf.square(tensor)
-        tensor_sum = tf.reduce_sum(square_tensor)
-        frobenius_norm = tf.sqrt(tensor_sum)
-        return frobenius_norm
+        square_tensor = th.tensor.sqr(tensor)
+        frobenius_norm_sqr = th.tensor.sum(square_tensor)
+        #frobenius_norm = th.tensor.sqrt(frobenius_norm_sqr)
+        return frobenius_norm_sqr
     
     # V e Y estao vetorizados
     # Antes de mais nada, volto ao formato de matrizes
-    V = tf.reshape(V, [-1, EMBEDDINGS_DIMENSION])
-    Y = tf.reshape(Y, [-1, NUM_CLASSES])
+    V = th.tensor.reshape(V, [-1, EMBEDDINGS_DIMENSION])
+    Y = th.tensor.reshape(Y, [-1, NUM_CLASSES])
    
-    T = tf.transpose
-    dot = tf.matmul
-    return norm(dot(T(V), V)) - 2 * norm(dot(T(V), Y)) + norm(dot(T(Y), Y))
+    #T = th.transpose
+    dot = th.dot
+    return norm(dot(V.T, V)) - 2 * norm(dot(V.T, Y)) + norm(dot(Y.T, Y))
 
 
 def train_nnet():       
