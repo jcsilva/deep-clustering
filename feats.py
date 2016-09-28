@@ -13,6 +13,7 @@ FRAME_LENGTH = .032
 FRAME_SHIFT = .008
 FS = 8000
 CONTEXT = 100
+OVERLAP = 2
 
 
 def squared_hann(M):
@@ -28,9 +29,9 @@ def stft(sig, rate):
     return np.log(np.absolute(spec))
 
 
-def get_batches(wavlist, min_mix=3, max_mix=3):
+def get_egs(wavlist, batch_size, min_mix=3, max_mix=3):
     wavs = []
-    while True:
+    while True:  # Generate examples indefinitely
         # Select number of files to mix
         k = np.random.randint(min_mix, max_mix+1)
         if(k > len(wavs)):
@@ -44,7 +45,8 @@ def get_batches(wavlist, min_mix=3, max_mix=3):
         wavsum = None
         sigs = []
 
-        # Read selected wav files, store them individually and mix them
+        # Read selected wav files, store them individually for dominant spectra
+        # decision and generate the mixed input
         for i in range(k):
             p = wavs.pop()
             rate, sig = wav.read(p)
@@ -62,17 +64,14 @@ def get_batches(wavlist, min_mix=3, max_mix=3):
         if len(X) <= CONTEXT:
             continue
 
-        # STFTs for individual files
+        # STFTs for individual signals
         specs = []
         for sig in sigs:
             specs.append(stft(sig[:len(wavsum)], rate))
         specs = np.array(specs)
 
-        # Mask for ditching silence components
-        Y = np.zeros(X.shape + (k,))
-
         # Get dominant spectra indexes, create one-hot outputs
-        m = np.max(X) - 5.5
+        Y = np.zeros(X.shape + (k,))
         vals = np.argmax(specs, axis=0)
         for i in range(k):
             t = np.zeros(k)
@@ -86,14 +85,23 @@ def get_batches(wavlist, min_mix=3, max_mix=3):
 #        Y[X < m] = np.zeros(k)
         i = 0
 
-        # Generating batches
+        # Generating sequences
+        inp = []
+        out = []
         while i + CONTEXT < len(X):
-            yield(X[i:i+CONTEXT].reshape((1, CONTEXT, -1)),
-                  Y[i:i+CONTEXT].reshape((1, -1)))
-            i += 1
+            inp.append(X[i:i+CONTEXT].reshape((-1,)))
+            out.append(Y[i:i+CONTEXT].reshape((-1,)))
+            i += CONTEXT // OVERLAP
+        while(1):
+            yield(np.expand_dims(np.array(inp), axis=0),
+                  np.expand_dims(np.array(out), axis=0))
 
 
 if __name__ == "__main__":
-    a = get_batches()
-    for i,j in a:
-        print(i.shape,j.shape)
+    a = get_egs('wavlist', 1)
+    k = 200
+    for i, j in a:
+        print(i.shape, j.shape)
+        k -= 1
+        if k == 0:
+            break
