@@ -5,7 +5,7 @@ Created on Mon Sep 26 15:23:31 2016
 @author: jcsilva
 """
 
-import tensorflow as tf
+from keras import backend as K
 from keras.models import Sequential
 from keras.layers import Dropout, Activation, Input, Reshape, BatchNormalization
 from keras.layers import Dense, LSTM, Bidirectional
@@ -50,22 +50,22 @@ def load_model(filename):
     loaded_model.load_weights(filename + ".h5")
     print("Loaded model from disk")
     return loaded_model
- 
- 
+
+
 def affinitykmeans(Y, V):
     def norm(tensor):
-        square_tensor = tf.square(tensor)
-        tensor_sum = tf.reduce_sum(square_tensor)
-        frobenius_norm = tf.sqrt(tensor_sum)
+        square_tensor = K.square(tensor)
+        tensor_sum = K.sum(square_tensor)
+        frobenius_norm = K.sqrt(tensor_sum)
         return frobenius_norm
-    
+
     # V e Y estao vetorizados
     # Antes de mais nada, volto ao formato de matrizes
-    V = tf.reshape(V, [-1, EMBEDDINGS_DIMENSION])
-    Y = tf.reshape(Y, [-1, NUM_CLASSES])
-   
-    T = tf.transpose
-    dot = tf.matmul
+    V = K.reshape(V, [-1, EMBEDDINGS_DIMENSION])
+    Y = K.reshape(Y, [-1, NUM_CLASSES])
+
+    T = K.transpose
+    dot = K.dot
     return norm(dot(T(V), V)) - 2 * norm(dot(T(V), Y)) + norm(dot(T(Y), Y))
 
 
