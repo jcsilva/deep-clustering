@@ -12,7 +12,11 @@ from keras.layers.wrappers import TimeDistributed
 from keras.layers.noise import GaussianNoise
 from keras.optimizers import SGD
 from keras.models import model_from_json
-from feats import myGenerator
+from feats import myGenerator, get_batches
+
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans
 
 EMBEDDINGS_DIMENSION = 50
 NUM_CLASSES = 3
@@ -69,10 +73,10 @@ def train_nnet():
 #    model.add(Activation('softmax'))
 
     model = Sequential()
-    model.add(Bidirectional(LSTM(300, return_sequences=True), input_shape=(100,129)))
+    model.add(Bidirectional(LSTM(30, return_sequences=True), input_shape=(100,129)))
     #model.add(Dropout(0.5))
     #model.add(GaussianNoise(0.77))    
-    model.add(Bidirectional(LSTM(300)))    
+    model.add(Bidirectional(LSTM(30)))    
     #model.add(GaussianNoise(0.77))
     #model.add(Dropout(0.5))
     model.add(Dense(INPUT_SAMPLE_SIZE * EMBEDDINGS_DIMENSION, init='uniform', activation='tanh'))
@@ -82,7 +86,7 @@ def train_nnet():
     sgd = SGD(lr=1e-5, momentum=0.9, decay=0.0, nesterov=True)
     model.compile(loss=affinitykmeans, optimizer=sgd)
 
-    model.fit_generator(myGenerator(),  samples_per_epoch=10, nb_epoch=1, max_q_size=10)
+    model.fit_generator(myGenerator(),  samples_per_epoch=10, nb_epoch=10, max_q_size=100)
     #score = model.evaluate(X_test, y_test, batch_size=16)
     save_model(model, "model")
     
@@ -90,13 +94,43 @@ def main():
     train_nnet()    
     loaded_model = load_model("model")
 
+    xval = []
+    yref = []
     ypred = []
-    for x,y in myGenerator(1):
-        ypred.append(loaded_model.predict(x))
-    #with open("outfile", "w") as f:
-    for y in ypred:
-        print(y.shape)
+    i = 0
+    for x, y in myGenerator():
+        i += 1
+        if i % 2 == 1:
+            v = loaded_model.predict(x)
+            xval.append(x.reshape(100, 129))
+            yref.append(y.reshape(100, 129, 3))
+            ypred.append(v.reshape(100, 129, 50))
+        if i == 6:
+            break
+#    #with open("outfile", "w") as f:
+    xval = np.concatenate(xval)
+    yref = np.concatenate(yref)
+    ypred = np.concatenate(ypred)
 
+    k = NUM_CLASSES
+    model = KMeans(k)
+    eg = model.fit_predict(ypred.reshape(ypred.size//50, 50))
+    imshape = yref.shape
+    img = np.zeros(eg.shape + (3,))
+    img[eg == 0] = [1, 0, 0]
+    img[eg == 1] = [0, 1, 0]
+    if(k > 2):
+        img[eg == 2] = [0, 0, 1]
+        img[eg == 3] = [0, 0, 0]
+    img = img.reshape(imshape)
+
+    img2 = yref
+    img3 = xval
+
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1)
+    ax1.imshow(img.swapaxes(0, 1), origin='lower')
+    ax2.imshow(img2.swapaxes(0, 1), origin='lower')
+    ax3.imshow(img3.swapaxes(0, 1), origin='lower')
 
 if __name__ == "__main__":
     main()
