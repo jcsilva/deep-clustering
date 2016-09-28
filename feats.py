@@ -71,10 +71,10 @@ def stft(sig, rate):
 #            labels = np.zeros((batch_size,) + y.shape)
 
 def get_signals():
-    root_prefix = "/media/dados/resources/database/speech/pt-BR/LapsBM1.4-8k/all/LapsBM_"   
+    root_prefix = "/media/data/corpora/Laps/LapsBM1.4-8k/all/LapsBM_"   
    
     file_num = str(np.random.randint(1,700))
-    #file_num = "61"
+    file_num = "61"
     p1 = root_prefix + file_num.rjust(4,'0') + ".wav"
     rate, sig = wav.read(p1)
     sig = sig - np.mean(sig)
@@ -83,7 +83,7 @@ def get_signals():
     #root_prefix = "/media/dados/resources/database/speech/pt-BR/LapsBM1.4-8k/LapsBM-M001/LapsBM_" 
     
     file_num = str(np.random.randint(1,700))
-    #file_num = "1"
+    file_num = "1"
     p2 = root_prefix + file_num.rjust(4,'0') + ".wav"
     rate2, sig2 = wav.read(p2)
     sig2 = sig2 - np.mean(sig2)

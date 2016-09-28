@@ -5,7 +5,7 @@ Created on Mon Sep 26 15:23:31 2016
 @author: jcsilva
 """
 
-import theano as th
+import tensorflow as tf
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Activation, LSTM, Input, Bidirectional
 from keras.layers.wrappers import TimeDistributed
@@ -42,23 +42,23 @@ def load_model(filename):
     loaded_model.load_weights(filename + ".h5")
     print("Loaded model from disk")
     return loaded_model
- 
- 
+
+    
 def affinitykmeans(Y, V):
     def norm(tensor):
-        square_tensor = th.tensor.sqr(tensor)
-        frobenius_norm_sqr = th.tensor.sum(square_tensor)
-        #frobenius_norm = th.tensor.sqrt(frobenius_norm_sqr)
-        return frobenius_norm_sqr
+        square_tensor = tf.square(tensor)
+        tensor_sum = tf.reduce_sum(square_tensor)
+        frobenius_norm = tf.sqrt(tensor_sum)
+        return frobenius_norm
     
     # V e Y estao vetorizados
     # Antes de mais nada, volto ao formato de matrizes
-    V = th.tensor.reshape(V, [-1, EMBEDDINGS_DIMENSION])
-    Y = th.tensor.reshape(Y, [-1, NUM_CLASSES])
+    V = tf.reshape(V, [-1, EMBEDDINGS_DIMENSION])
+    Y = tf.reshape(Y, [-1, NUM_CLASSES])
    
-    #T = th.transpose
-    dot = th.dot
-    return norm(dot(V.T, V)) - 2 * norm(dot(V.T, Y)) + norm(dot(Y.T, Y))
+    T = tf.transpose
+    dot = tf.matmul
+    return norm(dot(T(V), V)) - 2 * norm(dot(T(V), Y)) + norm(dot(T(Y), Y))
 
 
 def train_nnet():       
@@ -73,10 +73,10 @@ def train_nnet():
 #    model.add(Activation('softmax'))
 
     model = Sequential()
-    model.add(Bidirectional(LSTM(30, return_sequences=True), input_shape=(100,129)))
+    model.add(Bidirectional(LSTM(300, return_sequences=True), input_shape=(100,129)))
     #model.add(Dropout(0.5))
     #model.add(GaussianNoise(0.77))    
-    model.add(Bidirectional(LSTM(30)))    
+    model.add(Bidirectional(LSTM(120)))    
     #model.add(GaussianNoise(0.77))
     #model.add(Dropout(0.5))
     model.add(Dense(INPUT_SAMPLE_SIZE * EMBEDDINGS_DIMENSION, init='uniform', activation='tanh'))
@@ -86,7 +86,7 @@ def train_nnet():
     sgd = SGD(lr=1e-5, momentum=0.9, decay=0.0, nesterov=True)
     model.compile(loss=affinitykmeans, optimizer=sgd)
 
-    model.fit_generator(myGenerator(),  samples_per_epoch=10, nb_epoch=10, max_q_size=100)
+    model.fit_generator(myGenerator(),  samples_per_epoch=50, nb_epoch=10, max_q_size=100)
     #score = model.evaluate(X_test, y_test, batch_size=16)
     save_model(model, "model")
     
@@ -100,11 +100,11 @@ def main():
     i = 0
     for x, y in myGenerator():
         i += 1
-        if i % 2 == 1:
-            v = loaded_model.predict(x)
-            xval.append(x.reshape(100, 129))
-            yref.append(y.reshape(100, 129, 3))
-            ypred.append(v.reshape(100, 129, 50))
+        #if i % 2 == 1:
+        v = loaded_model.predict(x)
+        xval.append(x.reshape(100, 129)[:50])
+        yref.append(y.reshape(100, 129, NUM_CLASSES)[:50])
+        ypred.append(v.reshape(100, 129, EMBEDDINGS_DIMENSION)[:50])
         if i == 6:
             break
 #    #with open("outfile", "w") as f:
