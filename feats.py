@@ -26,18 +26,18 @@ def stft(sig, rate):
     return np.log(np.absolute(spec))
 
 
-def get_signals():
+def get_signals(min_idx=1, max_idx=700):
     root_prefix = "/media/data/corpora/Laps/LapsBM1.4-8k/all/LapsBM_"   
    
-    file_num = str(np.random.randint(1,700))
-    file_num = "61"
+    file_num = str(np.random.randint(min_idx, max_idx))
+    #file_num = "61"
     p1 = root_prefix + file_num.rjust(4,'0') + ".wav"
     rate, sig = wav.read(p1)
     sig = sig - np.mean(sig)
     sig = sig/np.max(np.abs(sig))
 
-    file_num = str(np.random.randint(1,700))
-    file_num = "1"
+    file_num = str(np.random.randint(min_idx, max_idx))
+    #file_num = "1"
     p2 = root_prefix + file_num.rjust(4,'0') + ".wav"
     rate2, sig2 = wav.read(p2)
     sig2 = sig2 - np.mean(sig2)
@@ -52,9 +52,9 @@ def get_signals():
     X = stft(x, rate) #[TODO] vou tratar de caso com taxa de amostragem diferente?
     
     return S1, S2, X
-
     
-def myGenerator(n=0):
+    
+def myGenerator(min_idx=1, max_idx=700, n=0):
     counter = 0 
     
     def condition(counter, n):
@@ -66,7 +66,7 @@ def myGenerator(n=0):
     while condition(counter, n):
         counter = counter + 1
         # escolho um arquivo
-        S1, S2, X = get_signals()
+        S1, S2, X = get_signals(min_idx,max_idx)
         
         # cria mascara binaria
         m = np.max(X) - 5.5 # consertar esse valor. Isso eh soh para identificar silencio!!
@@ -88,7 +88,7 @@ def myGenerator(n=0):
             idx = idx + CONTEXT // 2
         yield(np.array(total_x).transpose([1,0,2]), np.array(total_y).transpose([1,0,2]))
 
-
+        
 if __name__ == "__main__":
     a = myGenerator(1)
     for i,j in a:

@@ -82,12 +82,12 @@ def train_nnet():
 #    model.add(Activation('softmax'))
 
     model = Sequential()
-    model.add(Bidirectional(LSTM(30, return_sequences=True),
+    model.add(Bidirectional(LSTM(3, return_sequences=True),
                             input_shape=inp_shape))
     model.add(TimeDistributed(BatchNormalization(mode=2)))
 #    model.add(GaussianNoise(0.77))
 #    model.add(Dropout(0.5))
-    model.add(Bidirectional(LSTM(30, return_sequences=True)))
+    model.add(Bidirectional(LSTM(3, return_sequences=True)))
     model.add(TimeDistributed(BatchNormalization(mode=2)))
 #    model.add(GaussianNoise(0.77))
 #    model.add(Dropout(0.5))
@@ -104,8 +104,9 @@ def train_nnet():
     sgd = Adadelta()
     model.compile(loss=affinitykmeans, optimizer=sgd)
 
-    model.fit_generator(myGenerator(),
-                        samples_per_epoch=20, nb_epoch=10, max_q_size=10)
+    model.fit_generator(myGenerator(1,600),
+                        samples_per_epoch=20, nb_epoch=100, max_q_size=10, 
+                        validation_data=myGenerator(601,700), nb_val_samples=10)
     # score = model.evaluate(X_test, y_test, batch_size=16)
     save_model(model, "model")
     
