@@ -22,6 +22,7 @@ NUM_CLASSES = 2
 
 def print_examples(x, y, v):
     from sklearn.cluster import KMeans
+    from itertools import permutations
     import matplotlib.pyplot as plt
 
     x = x[0][::2]
@@ -46,10 +47,23 @@ def print_examples(x, y, v):
     img2 = y
     img3 = x
 
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1)
+    img[np.sum(img, axis=2) == 0] = [0,0,1]
+    img2[np.sum(img2, axis=2) == 0] = [0,0,1]
+
+    p = None
+    s = np.float('Inf')
+    for pp in permutations([0,1,2]):
+        ss = np.sum(np.square(img2 - img[:, :, pp]))
+        if ss < s:
+            s = ss
+            p = pp
+    img = img[:, :, p]
+
+    fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1)
     ax1.imshow(img.swapaxes(0, 1), origin='lower')
     ax2.imshow(img2.swapaxes(0, 1), origin='lower')
-    ax3.imshow(img3.swapaxes(0, 1), origin='lower')
+    ax3.imshow(np.abs(img-img2).swapaxes(0, 1), origin='lower')
+    ax4.imshow(img3.swapaxes(0, 1), origin='lower')
 
 
 def get_dims(generator, embedding_size):
@@ -115,7 +129,7 @@ def train_nnet(wavlist):
 #    model.add(TimeDistributed((Dropout(0.5))))
     model.add(TimeDistributed(Dense(out_shape[-1],
                                     init='uniform',
-                                    activation='tanh')))
+                                    activation='relu')))
 
 #    sgd = SGD(lr=1e-5, momentum=0.9, decay=0.0, nesterov=True)
     sgd = Adam()
@@ -124,7 +138,7 @@ def train_nnet(wavlist):
     model.fit_generator(get_egs(wavlist,
                                 min_mix=NUM_CLASSES,
                                 max_mix=NUM_CLASSES),
-                        samples_per_epoch=20, nb_epoch=10, max_q_size=10)
+                        samples_per_epoch=20, nb_epoch=1, max_q_size=10)
     # score = model.evaluate(X_test, y_test, batch_size=16)
     save_model(model, "model")
 
