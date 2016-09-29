@@ -31,25 +31,49 @@ def stft(sig, rate):
 
 
 def get_egs(wavlist, min_mix=3, max_mix=3, sil_as_class=True):
-    wavs = []
+    """
+    Generate examples for the neural network from a list of wave files with
+    speaker ids. Each line is of type "path speaker", as follows:
+    path/to/1st.wav spk1
+    path/to/2nd.wav spk2
+    path/to/3rd.wav spk1
+
+    and so on.
+    min_mix and max_mix are the minimum and maximum number of examples to
+    be mixed for generating a training example
+
+    sil_as_class defines if the threshold-defined background silence will
+    be treated as a separate class
+    """
+    speaker_wavs = {}
     while True:  # Generate examples indefinitely
         # Select number of files to mix
         k = np.random.randint(min_mix, max_mix+1)
-        if(k > len(wavs)):
-            # Reading wav files list and randomizing inputs
-            wavs = []
+        if k > len(speaker_wavs):
+            # Reading wav files list and separating per speaker
+            speaker_wavs = {}
             f = open(wavlist)
             for line in f:
-                wavs.append(line.strip())
+                line = line.strip().split()
+                if len(line) != 2:
+                    continue
+                p, spk = line
+                if spk not in speaker_wavs:
+                    speaker_wavs[spk] = []
+                speaker_wavs[spk].append(p)
             f.close()
-            random.shuffle(wavs)
+            # Randomizing wav lists
+            for spk in speaker_wavs:
+                random.shuffle(speaker_wavs[spk])
         wavsum = None
         sigs = []
 
-        # Read selected wav files, store them individually for dominant spectra
-        # decision and generate the mixed input
-        for i in range(k):
-            p = wavs.pop()
+        # Pop wav files from random speakers, store them individually for
+        # dominant spectra decision and generate the mixed input
+        for spk in random.sample(speaker_wavs.keys(), k):
+            p = speaker_wavs[spk].pop()
+            if not speaker_wavs[spk]:
+                del(speaker_wavs[spk])  # Remove empty speakers from dictionary
             rate, sig = wav.read(p)
             sig = sig - np.mean(sig)
             sig = sig/np.max(np.abs(sig))
@@ -107,8 +131,8 @@ def get_egs(wavlist, min_mix=3, max_mix=3, sil_as_class=True):
 
 
 if __name__ == "__main__":
-    a = get_egs('wavlist', 1)
-    k = 200
+    a = get_egs('wavlist_short', 1)
+    k = 6
     for i, j in a:
         print(i.shape, j.shape)
         k -= 1
