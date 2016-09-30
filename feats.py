@@ -130,16 +130,10 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True):
         i = 0
 
         # Generating sequences
-        inp = []
-        out = []
-        mask = []
         while i + CONTEXT < len(X):
-            inp.append(X[i:i+CONTEXT].reshape((-1,)))
-            out.append(Y[i:i+CONTEXT].reshape((-1,)))
-            mask.append(M[i:i+CONTEXT].reshape((-1,)))
-            i += CONTEXT // OVERLAP
-        yield(np.expand_dims(np.array(inp), axis=0),
-              np.expand_dims(np.array(out), axis=0))
+            yield(X[i:i+CONTEXT].reshape((1, CONTEXT, -1)),
+                  Y[i:i+CONTEXT].reshape((1, CONTEXT, -1)))
+            i += CONTEXT//2
 
 
 if __name__ == "__main__":

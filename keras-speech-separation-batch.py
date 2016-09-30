@@ -40,7 +40,7 @@ def print_examples(x, y, v):
     y = y.reshape((-1, 129, k))
     v = v.reshape((-1, 129, EMBEDDINGS_DIMENSION))
 
-    model = KMeans(k)
+    model = KMeans(k+1)
     eg = model.fit_predict(v.reshape(-1, EMBEDDINGS_DIMENSION))
     imshape = x.shape + (3,)
     img = np.zeros(eg.shape + (3,))
@@ -84,8 +84,11 @@ def print_examples(x, y, v):
 def get_dims(generator, embedding_size):
     inp, out = next(generator)
     k = NUM_CLASSES + int(SIL_AS_CLASS)
-    inp_shape = (None, inp.shape[-1])
-    out_shape = (None, out.shape[-1]//(k) * embedding_size)
+    inp_shape = inp.shape[1:]
+    out_shape = list(out.shape[1:])
+    out_shape[-1] *= embedding_size/k
+    out_shape[-1] = int(out_shape[-1])
+    out_shape = tuple(out_shape)
     return inp_shape, out_shape
 
 
@@ -168,16 +171,30 @@ def train_nnet(train_list, valid_list):
 def main():
 #    train_nnet('wavlist_short', 'wavlist_short')
     loaded_model = load_model("model")
-    x, y = next(get_egs('wavlist_short', 2, 2, SIL_AS_CLASS))
-    v = loaded_model.predict(x)
+    X = []
+    Y = []
+    V = []
+    gen = get_egs('wavlist_short', 2, 2, SIL_AS_CLASS)
+    i = 0
+    for inp, ref in gen:
+        inp, ref = next(gen)
+        X.append(inp)
+        Y.append(ref)
+        V.append(loaded_model.predict(inp))
+        i += 1
+        if i == 8:
+            break
+    x = np.concatenate(X, axis=1)
+    y = np.concatenate(Y, axis=1)
+    v = np.concatenate(V, axis=1)
 
-    np.save('x', x)
-    np.save('y', y)
-    np.save('v', v)
-
-    x = np.load('x.npy')
-    y = np.load('y.npy')
-    v = np.load('v.npy')
+#    np.save('x', x)
+#    np.save('y', y)
+#    np.save('v', v)
+#
+#    x = np.load('x.npy')
+#    y = np.load('y.npy')
+#    v = np.load('v.npy')
     print_examples(x, y, v)
 
 
