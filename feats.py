@@ -28,6 +28,8 @@ def stft(sig, rate):
 
 def get_signals(min_idx=1, max_idx=700):
     root_prefix = "/media/data/corpora/Laps/LapsBM1.4-8k/all/LapsBM_"   
+
+    np.random.seed(1)
    
     file_num = str(np.random.randint(min_idx, max_idx))
     #file_num = "61"
@@ -83,10 +85,10 @@ def myGenerator(min_idx=1, max_idx=700, n=0):
             # blstm
             # ACUMULAR ENTRADA E SAIDA DA FORMA: (1, n, 12900), (n, 12900*n_classes),
             # sendo n o numero de iteracoes por esse loop
-            total_x.append(X[idx:idx + CONTEXT].reshape((1,-1)))
-            total_y.append(to_categorical(np.ravel(y[idx:idx + CONTEXT])).reshape((1,-1)))
+            yield (np.expand_dims(X[idx:idx + CONTEXT], axis=0),
+            np.expand_dims(to_categorical(np.ravel(y[idx:idx + CONTEXT])).reshape((100,-1)), axis=0))
             idx = idx + CONTEXT // 2
-        yield(np.array(total_x).transpose([1,0,2]), np.array(total_y).transpose([1,0,2]))
+            #yield(np.array(total_x).transpose([1,0,2]), np.array(total_y).transpose([1,0,2]))
 
         
 if __name__ == "__main__":

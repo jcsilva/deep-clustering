@@ -13,6 +13,7 @@ from keras.layers.wrappers import TimeDistributed
 from keras.layers.noise import GaussianNoise
 from keras.optimizers import SGD, RMSprop, Adadelta
 from keras.models import model_from_json
+from keras.callbacks import EarlyStopping, ModelCheckpoint
 from feats import myGenerator
 
 import numpy as np
@@ -22,12 +23,13 @@ import matplotlib.pyplot as plt
 EMBEDDINGS_DIMENSION = 50
 NUM_CLASSES = 3
 
+
 def save_model(model, filename):
     # serialize model to JSON
     model_json = model.to_json()
     with open(filename + ".json", "w") as json_file:
         json_file.write(model_json)
-    #serialize weights to HDF5
+    # serialize weights to HDF5
     model.save_weights(filename + ".h5")
     print("Saved model to disk")
 
@@ -43,18 +45,19 @@ def load_model(filename):
     print("Loaded model from disk")
     return loaded_model
 
+
 def get_dims(generator, embedding_size):
     inp, out = next(generator)
     inp_shape = (None, inp.shape[-1])
     out_shape = (None, out.shape[-1]//NUM_CLASSES * embedding_size)
     return inp_shape, out_shape
-    
-    
+
+
 def affinitykmeans(Y, V):
     def norm(tensor):
         square_tensor = K.square(tensor)
-        tensor_sum = K.sum(square_tensor)
-        frobenius_norm = K.sqrt(tensor_sum)
+        frobenius_norm2 = K.sum(square_tensor)
+        frobenius_norm = K.sqrt(frobenius_norm2)
         return frobenius_norm
 
     # V e Y estao vetorizados
@@ -65,7 +68,6 @@ def affinitykmeans(Y, V):
     T = K.transpose
     dot = K.dot
     return norm(dot(T(V), V)) - 2 * norm(dot(T(V), Y)) + norm(dot(T(Y), Y))
-
 
 
 def train_nnet():
@@ -82,40 +84,44 @@ def train_nnet():
 #    model.add(Activation('softmax'))
 
     model = Sequential()
-    model.add(Bidirectional(LSTM(3, return_sequences=True),
+    model.add(Bidirectional(LSTM(600, return_sequences=True),
                             input_shape=inp_shape))
     model.add(TimeDistributed(BatchNormalization(mode=2)))
-#    model.add(GaussianNoise(0.77))
-#    model.add(Dropout(0.5))
-    model.add(Bidirectional(LSTM(3, return_sequences=True)))
+    model.add(GaussianNoise(0.77))
+    # model.add(Dropout(0.5))
+    model.add(Bidirectional(LSTM(600, return_sequences=True)))
     model.add(TimeDistributed(BatchNormalization(mode=2)))
-#    model.add(GaussianNoise(0.77))
-#    model.add(Dropout(0.5))
+    model.add(GaussianNoise(0.77))
+    # model.add(Dropout(0.5))
     model.add(TimeDistributed(Dense(out_shape[-1],
                                     init='uniform',
                                     activation='tanh')))
-#    model.add(Reshape((12900,EMBEDDINGS_DIMENSION)))
 
+    sgd = RMSprop()
 
-    #model.add(TimeDistributed(Dense(EMBEDDINGS_DIMENSION)))
-    #model.add(Activation('softmax'))
-
-#    sgd = SGD(lr=1e-5, momentum=0.9, decay=0.0, nesterov=True)
-    sgd = Adadelta()
     model.compile(loss=affinitykmeans, optimizer=sgd)
 
-    model.fit_generator(myGenerator(1,600),
-                        samples_per_epoch=20, nb_epoch=100, max_q_size=10, 
-                        validation_data=myGenerator(601,700), nb_val_samples=10)
+    earlyStopping = EarlyStopping(monitor='val_loss', patience=5)
+
+    checkpoint = ModelCheckpoint('weights-{epoch:03d}-{val_loss:.2f}.hdf5',
+                                 save_weights_only=True)
+
+    model.fit_generator(myGenerator(1, 600),
+                        samples_per_epoch=800,
+                        nb_epoch=200,
+                        max_q_size=800,
+                        validation_data=myGenerator(601, 700),
+                        nb_val_samples=100,
+                        callbacks=[earlyStopping, checkpoint])
     # score = model.evaluate(X_test, y_test, batch_size=16)
     save_model(model, "model")
-    
+
 
 def main():
     train_nnet()
     loaded_model = load_model("model")
 
-    x, y = next(myGenerator())
+    x, y = next(myGenerator(671, 700))
     v = loaded_model.predict(x)
     x = x[0][::2]
     y = y[0][::2]
