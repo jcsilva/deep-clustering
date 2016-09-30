@@ -109,13 +109,24 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True):
             t[i] = 1
             Y[vals == i] = t
 
+        # EXPERIMENTAL: normalize mag spectra as weighted norm vectors instead
+        # of using unit vectors for "hard" classes
+#        if sil_as_class:
+#            print("This won't work with sil_as_class=True")
+#        from sklearn.preprocessing import normalize
+#        Y = np.transpose(specs, (1, 2, 0))
+#        Y = Y.reshape((-1, nc))
+#        Y = normalize(Y, axis=1)
+#        Y = Y.reshape(X.shape + (nc,))
+
         # Create mask for zeroing out gradients from silence components
-        m = np.max(X) - 2  # Minus 40dB
+        m = np.max(X) - 40./20  # Minus 40dB
         M = np.ones(X.shape)
         M[X < m] = 0
         if sil_as_class:
-            Y[X < m] = np.zeros(nc)
-            Y[X < m][-1] = 1
+            z = np.zeros(nc)
+            z[-1] = 1
+            Y[X < m] = z
         i = 0
 
         # Generating sequences
@@ -132,7 +143,7 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True):
 
 
 if __name__ == "__main__":
-    a = get_egs('wavlist_short', 1)
+    a = get_egs('wavlist_short', 2, 2, False)
     k = 6
     for i, j in a:
         print(i.shape, j.shape)
