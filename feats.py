@@ -28,9 +28,6 @@ def stft(sig, rate):
 
 def get_signals(min_idx=1, max_idx=700):
     root_prefix = "/media/data/corpora/Laps/LapsBM1.4-8k/all/LapsBM_"   
-
-    np.random.seed(1)
-   
     file_num = str(np.random.randint(min_idx, max_idx))
     #file_num = "61"
     p1 = root_prefix + file_num.rjust(4,'0') + ".wav"
