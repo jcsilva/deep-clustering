@@ -18,24 +18,31 @@ import numpy as np
 
 EMBEDDINGS_DIMENSION = 50
 NUM_CLASSES = 2
+SIL_AS_CLASS = False
 
 
 def print_examples(x, y, v):
     from sklearn.cluster import KMeans
     from itertools import permutations
     import matplotlib.pyplot as plt
+    from sklearn.preprocessing import normalize
 
     x = x[0][::2]
     y = y[0][::2]
     v = v[0][::2]
+
+    v = normalize(v, axis=1)
+    k = NUM_CLASSES
+    if SIL_AS_CLASS:
+        k += 1
+
     x = x.reshape((-1, 129))
-    y = y.reshape((-1, 129, 3))
+    y = y.reshape((-1, 129, k))
     v = v.reshape((-1, 129, EMBEDDINGS_DIMENSION))
 
-    k = NUM_CLASSES
-    model = KMeans(k+1)
+    model = KMeans(k)
     eg = model.fit_predict(v.reshape(-1, EMBEDDINGS_DIMENSION))
-    imshape = y.shape
+    imshape = x.shape + (3,)
     img = np.zeros(eg.shape + (3,))
     img[eg == 0] = [1, 0, 0]
     img[eg == 1] = [0, 1, 0]
@@ -44,32 +51,41 @@ def print_examples(x, y, v):
         img[eg == 3] = [0, 0, 0]
     img = img.reshape(imshape)
 
-    img2 = y
+    img2 = np.zeros(eg.shape + (3,))
+    vals = np.argmax(y.reshape((-1, k)), axis=1)
+    print(img2.shape, vals.shape)
+    for i in range(k):
+        t = np.zeros(3)
+        t[i] = 1
+        img2[vals == i] = t
+    img2 = img2.reshape(imshape)
+
     img3 = x
 
-    img[np.sum(img, axis=2) == 0] = [0,0,1]
-    img2[np.sum(img2, axis=2) == 0] = [0,0,1]
-
+    # Find most probable color permutation from prediction
     p = None
     s = np.float('Inf')
-    for pp in permutations([0,1,2]):
+    for pp in permutations([0, 1, 2]):
         ss = np.sum(np.square(img2 - img[:, :, pp]))
         if ss < s:
             s = ss
             p = pp
     img = img[:, :, p]
+    img4 = 1 - (((img-img2+1)/2))
+    img4[np.all(img4 == .5, axis=2)] = 0
 
     fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1)
     ax1.imshow(img.swapaxes(0, 1), origin='lower')
     ax2.imshow(img2.swapaxes(0, 1), origin='lower')
-    ax3.imshow(np.abs(img-img2).swapaxes(0, 1), origin='lower')
+    ax3.imshow(img4.swapaxes(0, 1), origin='lower')
     ax4.imshow(img3.swapaxes(0, 1), origin='lower')
 
 
 def get_dims(generator, embedding_size):
     inp, out = next(generator)
+    k = NUM_CLASSES + int(SIL_AS_CLASS)
     inp_shape = (None, inp.shape[-1])
-    out_shape = (None, out.shape[-1]//(NUM_CLASSES+1) * embedding_size)
+    out_shape = (None, out.shape[-1]//(k) * embedding_size)
     return inp_shape, out_shape
 
 
@@ -104,18 +120,24 @@ def affinitykmeans(Y, V):
 
     # V e Y estao vetorizados
     # Antes de mais nada, volto ao formato de matrizes
-    V = K.reshape(V, [-1, EMBEDDINGS_DIMENSION])
-    Y = K.reshape(Y, [-1, NUM_CLASSES+1])
+    V = K.l2_normalize(K.reshape(V, [-1, EMBEDDINGS_DIMENSION]), axis=1)
+    Y = K.reshape(Y, [-1, NUM_CLASSES + int(SIL_AS_CLASS)])
 
     T = K.transpose
     dot = K.dot
     return norm(dot(T(V), V)) - 2 * norm(dot(T(V), Y)) + norm(dot(T(Y), Y))
 
 
-def train_nnet(wavlist):
-    inp_shape, out_shape = get_dims(get_egs(wavlist,
-                                            min_mix=NUM_CLASSES,
-                                            max_mix=NUM_CLASSES),
+def train_nnet(train_list, valid_list):
+    train_gen = get_egs(train_list,
+                        min_mix=NUM_CLASSES,
+                        max_mix=NUM_CLASSES,
+                        sil_as_class=SIL_AS_CLASS)
+    valid_gen = get_egs(valid_list,
+                        min_mix=NUM_CLASSES,
+                        max_mix=NUM_CLASSES,
+                        sil_as_class=SIL_AS_CLASS)
+    inp_shape, out_shape = get_dims(train_gen,
                                     EMBEDDINGS_DIMENSION)
     model = Sequential()
     model.add(Bidirectional(LSTM(30, return_sequences=True),
@@ -135,18 +157,18 @@ def train_nnet(wavlist):
     sgd = Adam()
     model.compile(loss=affinitykmeans, optimizer=sgd)
 
-    model.fit_generator(get_egs(wavlist,
-                                min_mix=NUM_CLASSES,
-                                max_mix=NUM_CLASSES),
-                        samples_per_epoch=20, nb_epoch=1, max_q_size=10)
+    model.fit_generator(train_gen,
+                        validation_data=valid_gen,
+                        nb_val_samples=1,
+                        samples_per_epoch=20, nb_epoch=10, max_q_size=10)
     # score = model.evaluate(X_test, y_test, batch_size=16)
     save_model(model, "model")
 
 
 def main():
-    train_nnet('wavlist_short')
+#    train_nnet('wavlist_short', 'wavlist_short')
     loaded_model = load_model("model")
-    x, y = next(get_egs('wavlist_short', 2, 2))
+    x, y = next(get_egs('wavlist_short', 2, 2, SIL_AS_CLASS))
     v = loaded_model.predict(x)
 
     np.save('x', x)
