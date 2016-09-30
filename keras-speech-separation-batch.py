@@ -62,7 +62,7 @@ def affinitykmeans(Y, V):
 
     # V e Y estao vetorizados
     # Antes de mais nada, volto ao formato de matrizes
-    V = K.reshape(V, [-1, EMBEDDINGS_DIMENSION])
+    V = K.l2_normalize(K.reshape(V, [-1, EMBEDDINGS_DIMENSION]), axis=1)
     Y = K.reshape(Y, [-1, NUM_CLASSES])
 
     T = K.transpose
