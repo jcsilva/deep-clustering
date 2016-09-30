@@ -121,11 +121,11 @@ def main():
     train_nnet()
     loaded_model = load_model("model")
 
-    x, y = next(myGenerator(671, 700))
+    x, y = next(myGenerator(601, 700))
     v = loaded_model.predict(x)
-    x = x[0][::2]
-    y = y[0][::2]
-    v = v[0][::2]
+    x = x[:][::2]
+    y = y[:][::2]
+    v = v[:][::2]
     x = x.reshape((-1, 129))
     y = y.reshape((-1, 129, NUM_CLASSES))
     v = v.reshape((-1, 129, EMBEDDINGS_DIMENSION))

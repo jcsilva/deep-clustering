@@ -82,10 +82,11 @@ def myGenerator(min_idx=1, max_idx=700, n=0):
             # blstm
             # ACUMULAR ENTRADA E SAIDA DA FORMA: (1, n, 12900), (n, 12900*n_classes),
             # sendo n o numero de iteracoes por esse loop
-            yield (np.expand_dims(X[idx:idx + CONTEXT], axis=0),
-            np.expand_dims(to_categorical(np.ravel(y[idx:idx + CONTEXT])).reshape((100,-1)), axis=0))
+            total_x.append(X[idx:idx + CONTEXT])
+            total_y.append(to_categorical(np.ravel(y[idx:idx + CONTEXT])).reshape((100,-1)))
             idx = idx + CONTEXT // 2
             #yield(np.array(total_x).transpose([1,0,2]), np.array(total_y).transpose([1,0,2]))
+        yield(np.array(total_x), np.array(total_y))
 
         
 if __name__ == "__main__":
