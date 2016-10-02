@@ -21,6 +21,10 @@ EMBEDDINGS_DIMENSION = 50
 NUM_CLASSES = 2
 SIL_AS_CLASS = False
 
+BATCH_SIZE = 128
+TIMESTEPS = 100
+FREQSTEPS = 129
+
 
 def print_examples(x, y, v):
     from sklearn.cluster import KMeans
@@ -124,23 +128,29 @@ def affinitykmeans(Y, V):
 
     # V e Y estao vetorizados
     # Antes de mais nada, volto ao formato de matrizes
-    V = K.l2_normalize(K.reshape(V, [-1, EMBEDDINGS_DIMENSION]), axis=1)
-    Y = K.reshape(Y, [-1, NUM_CLASSES + int(SIL_AS_CLASS)])
+    V = K.l2_normalize(K.reshape(V, [BATCH_SIZE,
+                                     TIMESTEPS*FREQSTEPS,
+                                     EMBEDDINGS_DIMENSION]), axis=-1)
+    Y = K.reshape(Y, [BATCH_SIZE,
+                      TIMESTEPS*FREQSTEPS,
+                      NUM_CLASSES + int(SIL_AS_CLASS)])
 
-    T = K.transpose
-    dot = K.dot
-    return norm(dot(T(V), V)) - 2 * norm(dot(T(V), Y)) + norm(dot(T(Y), Y))
+    return (norm(K.batch_dot(K.permute_dimensions(V, [0, 2, 1]), V, axes=(2, 1))) -
+        2 * norm(K.batch_dot(K.permute_dimensions(V, [0, 2, 1]), Y, axes=(2, 1))) +
+            norm(K.batch_dot(K.permute_dimensions(Y, [0, 2, 1]), Y, axes=(2, 1))))
 
 
 def train_nnet(train_list, valid_list, weights_path=None):
     train_gen = get_egs(train_list,
                         min_mix=NUM_CLASSES,
                         max_mix=NUM_CLASSES,
-                        sil_as_class=SIL_AS_CLASS)
+                        sil_as_class=SIL_AS_CLASS,
+                        batch_size=BATCH_SIZE)
     valid_gen = get_egs(valid_list,
                         min_mix=NUM_CLASSES,
                         max_mix=NUM_CLASSES,
-                        sil_as_class=SIL_AS_CLASS)
+                        sil_as_class=SIL_AS_CLASS,
+                        batch_size=BATCH_SIZE)
     inp_shape, out_shape = get_dims(train_gen,
                                     EMBEDDINGS_DIMENSION)
     model = Sequential()

@@ -29,7 +29,7 @@ def stft(sig, rate):
     return np.real(np.log10(spec))  # Log 10 for easier dB calculation
 
 
-def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=128):
+def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
     """
     Generate examples for the neural network from a list of wave files with
     speaker ids. Each line is of type "path speaker", as follows:
