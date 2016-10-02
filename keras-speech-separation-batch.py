@@ -131,7 +131,7 @@ def affinitykmeans(Y, V):
     return norm(dot(T(V), V)) - 2 * norm(dot(T(V), Y)) + norm(dot(T(Y), Y))
 
 
-def train_nnet(train_list, valid_list):
+def train_nnet(train_list, valid_list, weights_path=None):
     train_gen = get_egs(train_list,
                         min_mix=NUM_CLASSES,
                         max_mix=NUM_CLASSES,
@@ -158,6 +158,9 @@ def train_nnet(train_list, valid_list):
 
 #    sgd = SGD(lr=1e-5, momentum=0.9, decay=0.0, nesterov=True)
     sgd = Adam()
+    if weights_path:
+        model.load_weights(weights_path)
+
     model.compile(loss=affinitykmeans, optimizer=sgd)
 
     model.fit_generator(train_gen,
