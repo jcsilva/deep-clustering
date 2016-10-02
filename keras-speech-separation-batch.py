@@ -13,6 +13,7 @@ from keras.layers import TimeDistributed, Bidirectional
 from keras.layers.noise import GaussianNoise
 from keras.optimizers import Adam, SGD
 from keras.models import model_from_json
+from keras.callbacks import ModelCheckpoint
 from feats import get_egs
 import numpy as np
 
@@ -163,10 +164,24 @@ def train_nnet(train_list, valid_list, weights_path=None):
 
     model.compile(loss=affinitykmeans, optimizer=sgd)
 
+    # checkpoint
+    filepath = "weights-improvement-{epoch:02d}-{val_loss:.2f}.h5"
+    checkpoint = ModelCheckpoint(filepath,
+                                 monitor='val_loss',
+                                 verbose=0,
+                                 save_best_only=True,
+                                 mode='min',
+                                 save_weights_only=True)
+
+    callbacks_list = [checkpoint]
+
     model.fit_generator(train_gen,
                         validation_data=valid_gen,
-                        nb_val_samples=1,
-                        samples_per_epoch=20, nb_epoch=10, max_q_size=10)
+                        nb_val_samples=128,
+                        samples_per_epoch=65536,
+                        nb_epoch=20,
+                        max_q_size=10,
+                        callbacks=callbacks_list)
     # score = model.evaluate(X_test, y_test, batch_size=16)
     save_model(model, "model")
 
