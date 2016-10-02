@@ -37,15 +37,13 @@ def print_examples(x, y, v):
     v = v[0][::2]
 
     v = normalize(v, axis=1)
-    k = NUM_CLASSES
-    if SIL_AS_CLASS:
-        k += 1
+    k = NUM_CLASSES + int(SIL_AS_CLASS)
 
     x = x.reshape((-1, 129))
     y = y.reshape((-1, 129, k))
     v = v.reshape((-1, 129, EMBEDDINGS_DIMENSION))
 
-    model = KMeans(k+1)
+    model = KMeans(k)
     eg = model.fit_predict(v.reshape(-1, EMBEDDINGS_DIMENSION))
     imshape = x.shape + (3,)
     img = np.zeros(eg.shape + (3,))
