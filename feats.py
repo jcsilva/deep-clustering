@@ -14,7 +14,6 @@ FRAME_LENGTH = .032
 FRAME_SHIFT = .008
 FS = 8000
 CONTEXT = 100
-OVERLAP = 2
 
 
 def squared_hann(M):
@@ -30,7 +29,7 @@ def stft(sig, rate):
     return np.real(np.log10(spec))  # Log 10 for easier dB calculation
 
 
-def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True):
+def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=128):
     """
     Generate examples for the neural network from a list of wave files with
     speaker ids. Each line is of type "path speaker", as follows:
@@ -47,6 +46,9 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True):
     be treated as a separate class
     """
     speaker_wavs = {}
+    batch_x = []
+    batch_y = []
+    batch_count = 0
     while True:  # Generate examples indefinitely
         # Select number of files to mix
         k = np.random.randint(min_mix, max_mix+1)
@@ -131,9 +133,18 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True):
 
         # Generating sequences
         while i + CONTEXT < len(X):
-            yield(X[i:i+CONTEXT].reshape((1, CONTEXT, -1)),
-                  Y[i:i+CONTEXT].reshape((1, CONTEXT, -1)))
+            batch_x.append(X[i:i+CONTEXT])
+            batch_y.append(Y[i:i+CONTEXT])
             i += CONTEXT//2
+
+            batch_count = batch_count+1
+
+            if batch_count == batch_size:
+                yield(np.array(batch_x).reshape((batch_size, CONTEXT, -1)),
+                      np.array(batch_y).reshape((batch_size, CONTEXT, -1)))
+                batch_x = []
+                batch_y = []
+                batch_count = 0
 
 
 if __name__ == "__main__":
