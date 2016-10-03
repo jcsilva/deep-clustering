@@ -17,11 +17,11 @@ from keras.callbacks import ModelCheckpoint
 from feats import get_egs
 import numpy as np
 
-EMBEDDINGS_DIMENSION = 50
+EMBEDDINGS_DIMENSION = 20
 NUM_CLASSES = 2
-SIL_AS_CLASS = False
+SIL_AS_CLASS = True
 
-BATCH_SIZE = 128
+BATCH_SIZE = 5
 TIMESTEPS = 100
 FREQSTEPS = 129
 
@@ -120,9 +120,15 @@ def load_model(filename):
 def affinitykmeans(Y, V):
     def norm(tensor):
         square_tensor = K.square(tensor)
-        tensor_sum = K.sum(square_tensor)
+        tensor_sum = K.sum(square_tensor, axis=(1, 2))
         frobenius_norm = K.sqrt(tensor_sum)
         return frobenius_norm
+
+    def dot(x, y):
+        return K.batch_dot(x, y, axes=(2, 1))
+
+    def T(x):
+        return K.permute_dimensions(x, [0, 2, 1])
 
     # V e Y estao vetorizados
     # Antes de mais nada, volto ao formato de matrizes
@@ -133,9 +139,7 @@ def affinitykmeans(Y, V):
                       TIMESTEPS*FREQSTEPS,
                       NUM_CLASSES + int(SIL_AS_CLASS)])
 
-    return (norm(K.batch_dot(K.permute_dimensions(V, [0, 2, 1]), V, axes=(2, 1))) -
-        2 * norm(K.batch_dot(K.permute_dimensions(V, [0, 2, 1]), Y, axes=(2, 1))) +
-            norm(K.batch_dot(K.permute_dimensions(Y, [0, 2, 1]), Y, axes=(2, 1))))
+    return norm(dot(T(V), V)) - norm(dot(T(V), Y)) * 2 + norm(dot(T(Y), Y))
 
 
 def train_nnet(train_list, valid_list, weights_path=None):
@@ -152,18 +156,21 @@ def train_nnet(train_list, valid_list, weights_path=None):
     inp_shape, out_shape = get_dims(train_gen,
                                     EMBEDDINGS_DIMENSION)
     model = Sequential()
-    model.add(Bidirectional(LSTM(30, return_sequences=True),
+    model.add(BatchNormalization(mode=2, input_shape=inp_shape))
+    model.add(Bidirectional(LSTM(120, return_sequences=True,
+                                 activation='tanh'),
                             input_shape=inp_shape))
     model.add(TimeDistributed(BatchNormalization(mode=2)))
     model.add(TimeDistributed((GaussianNoise(0.775))))
 #    model.add(TimeDistributed((Dropout(0.5))))
-    model.add(Bidirectional(LSTM(30, return_sequences=True)))
+    model.add(Bidirectional(LSTM(120, return_sequences=True,
+                                 activation='tanh')))
     model.add(TimeDistributed(BatchNormalization(mode=2)))
     model.add(TimeDistributed((GaussianNoise(0.775))))
 #    model.add(TimeDistributed((Dropout(0.5))))
     model.add(TimeDistributed(Dense(out_shape[-1],
                                     init='uniform',
-                                    activation='relu')))
+                                    activation='tanh')))
 
 #    sgd = SGD(lr=1e-5, momentum=0.9, decay=0.0, nesterov=True)
     sgd = Adam()
@@ -185,9 +192,9 @@ def train_nnet(train_list, valid_list, weights_path=None):
 
     model.fit_generator(train_gen,
                         validation_data=valid_gen,
-                        nb_val_samples=128,
-                        samples_per_epoch=65536,
-                        nb_epoch=20,
+                        nb_val_samples=1,
+                        samples_per_epoch=200,
+                        nb_epoch=10,
                         max_q_size=10,
                         callbacks=callbacks_list)
     # score = model.evaluate(X_test, y_test, batch_size=16)
@@ -195,7 +202,7 @@ def train_nnet(train_list, valid_list, weights_path=None):
 
 
 def main():
-#    train_nnet('wavlist_short', 'wavlist_short')
+    train_nnet('wavlist_spk', 'wavlist_spk')
     loaded_model = load_model("model")
     X = []
     Y = []
