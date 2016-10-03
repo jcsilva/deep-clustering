@@ -123,11 +123,12 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
 
         # Create mask for zeroing out gradients from silence components
         m = np.max(X) - 40./20  # Minus 40dB
-        M = np.ones(X.shape)
-        M[X < m] = 0
         if sil_as_class:
             z = np.zeros(nc)
             z[-1] = 1
+            Y[X < m] = z
+        else:
+            z = np.zeros(nc)
             Y[X < m] = z
         i = 0
 
