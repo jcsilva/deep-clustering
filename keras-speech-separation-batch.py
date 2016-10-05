@@ -17,7 +17,7 @@ from keras.callbacks import ModelCheckpoint
 from feats import get_egs
 import numpy as np
 
-EMBEDDINGS_DIMENSION = 20
+EMBEDDINGS_DIMENSION = 50
 NUM_CLASSES = 2
 SIL_AS_CLASS = False
 
@@ -162,20 +162,18 @@ def train_nnet(train_list, valid_list, weights_path=None):
                                     EMBEDDINGS_DIMENSION)
     model = Sequential()
     # model.add(BatchNormalization(mode=2, input_shape=inp_shape))
-    model.add(Bidirectional(LSTM(120, return_sequences=True,
-                                 activation='tanh'),
+    model.add(Bidirectional(LSTM(300, return_sequences=True,),
                             input_shape=inp_shape))
     # model.add(TimeDistributed(BatchNormalization(mode=2)))
     model.add(TimeDistributed((GaussianNoise(0.775))))
 #    model.add(TimeDistributed((Dropout(0.5))))
-    model.add(Bidirectional(LSTM(120, return_sequences=True,
-                                 activation='tanh')))
+    model.add(Bidirectional(LSTM(300, return_sequences=True,)))
     # model.add(TimeDistributed(BatchNormalization(mode=2)))
     model.add(TimeDistributed((GaussianNoise(0.775))))
 #    model.add(TimeDistributed((Dropout(0.5))))
     model.add(TimeDistributed(Dense(out_shape[-1],
                                     init='uniform',
-                                    activation='tanh')))
+                                    activation='tanh',)))
 
 #    sgd = SGD(lr=1e-5, momentum=0.9, decay=0.0, nesterov=True)
     sgd = Adadelta()
@@ -197,22 +195,22 @@ def train_nnet(train_list, valid_list, weights_path=None):
 
     model.fit_generator(train_gen,
                         validation_data=valid_gen,
-                        nb_val_samples=1,
-                        samples_per_epoch=200,
+                        nb_val_samples=100,
+                        samples_per_epoch=5000,
                         nb_epoch=50,
-                        max_q_size=10,
+                        max_q_size=100,
                         callbacks=callbacks_list)
     # score = model.evaluate(X_test, y_test, batch_size=16)
     save_model(model, "model")
 
 
 def main():
-    train_nnet('wavlist_short', 'wavlist_short')
+    train_nnet('train_list', 'valid_list')
     loaded_model = load_model("model")
     X = []
     Y = []
     V = []
-    gen = get_egs('wavlist_short', 2, 2, SIL_AS_CLASS)
+    gen = get_egs('valid_list', 2, 2, SIL_AS_CLASS)
     i = 0
     for inp, ref in gen:
         inp, ref = next(gen)
