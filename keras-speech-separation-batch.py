@@ -125,9 +125,8 @@ def load_model(filename):
 def affinitykmeans(Y, V):
     def norm(tensor):
         square_tensor = K.square(tensor)
-        tensor_sum = K.sum(square_tensor, axis=(1, 2))
-        frobenius_norm = K.sqrt(tensor_sum)
-        return frobenius_norm
+        frobenius_norm2 = K.sum(square_tensor, axis=(1, 2))
+        return frobenius_norm2
 
     def dot(x, y):
         return K.batch_dot(x, y, axes=(2, 1))
