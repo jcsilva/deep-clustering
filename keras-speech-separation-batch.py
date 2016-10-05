@@ -130,18 +130,16 @@ def affinitykmeans(Y, V):
     def T(x):
         return K.permute_dimensions(x, [0, 2, 1])
 
-    # V e Y estao vetorizados
-    # Antes de mais nada, volto ao formato de matrizes
     V = K.l2_normalize(K.reshape(V, [BATCH_SIZE,
                                      TIMESTEPS*FREQSTEPS,
                                      EMBEDDINGS_DIMENSION]), axis=-1)
     Y = K.reshape(Y, [BATCH_SIZE,
                       TIMESTEPS*FREQSTEPS,
                       NUM_CLASSES + int(SIL_AS_CLASS)])
-    
-    mask = K.sum(Y, axis=2, keepdims=True)
-    V = mask * V     
-    
+
+    silence_mask = K.sum(Y, axis=2, keepdims=True)
+    V = silence_mask * V
+
     return norm(dot(T(V), V)) - norm(dot(T(V), Y)) * 2 + norm(dot(T(Y), Y))
 
 
