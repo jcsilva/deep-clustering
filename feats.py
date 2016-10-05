@@ -138,6 +138,10 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
 
         # Generating sequences
         while i + TIMESTEPS < len(X):
+            if np.sum(Y[i:i+TIMESTEPS]) / (Y[i:i+TIMESTEPS].size/nc) < 0.4:
+                i += TIMESTEPS//2
+                continue
+
             batch_x.append(X[i:i+TIMESTEPS])
             batch_y.append(Y[i:i+TIMESTEPS])
             i += TIMESTEPS//2
