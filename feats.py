@@ -6,7 +6,8 @@ Created on Mon Sep 26 15:23:31 2016
 """
 import numpy as np
 import random
-import scipy.io.wavfile as wav
+import soundfile as sf
+from scipy.signal import decimate
 from python_speech_features import sigproc
 
 
@@ -77,7 +78,10 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
             p = speaker_wavs[spk].pop()
             if not speaker_wavs[spk]:
                 del(speaker_wavs[spk])  # Remove empty speakers from dictionary
-            rate, sig = wav.read(p)
+            sig, rate = sf.read(p)
+            if rate == 16000:
+                sig = decimate(sig, 2, zero_phase=True)
+                rate = 8000
             sig = sig - np.mean(sig)
             sig = sig/np.max(np.abs(sig))
             sig *= (np.random.random()*1/4 + 3/4)
