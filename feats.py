@@ -27,7 +27,7 @@ def stft(sig, rate):
                               winfunc=squared_hann)
     spec = np.fft.rfft(frames, int(FRAME_LENGTH*rate))
     # adding 1e-7 just to avoid problems with log(0)
-    return np.real(np.log10(spec + 1e-7))  # Log 10 for easier dB calculation
+    return np.log10(np.absolute(spec)+1e-7)  # Log 10 for easier dB calculation
 
 
 def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
@@ -92,7 +92,7 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
             sigs.append(sig)
 
         # STFT for mixed signal
-        X = np.real(stft(wavsum, rate))
+        X = stft(wavsum, rate)
         if len(X) <= TIMESTEPS:
             continue
 
