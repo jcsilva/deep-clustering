@@ -30,7 +30,7 @@ path/to/audioFile3 spk1
 spk1, spk2 identifies the speaker that uttered the recorded sentence. 
 
 
-The current implementation works with audio files recorded at 16 kHz and 8 kHz. It was already tested with flac and wav files, but it should work with all formats supported by [pysoundfile/libsndfile supports](http://www.mega-nerd.com/libsndfile/#Features).
+The current implementation works with audio files recorded at 16 kHz and 8 kHz. It was already tested with flac and wav files, but it should work with all formats supported by [pysoundfile/libsndfile](http://www.mega-nerd.com/libsndfile/#Features).
 
 
 After creating train\_list and valid\_list, you may start training the network with the command:
