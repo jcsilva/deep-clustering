@@ -27,7 +27,8 @@ def stft(sig, rate):
                               FRAME_SHIFT*rate,
                               winfunc=squared_hann)
     spec = np.fft.rfft(frames, int(FRAME_LENGTH*rate))
-    return np.real(np.log10(spec))  # Log 10 for easier dB calculation
+    # adding 1e-7 just to avoid problems with log(0)
+    return np.real(np.log10(spec + 1e-7))  # Log 10 for easier dB calculation
 
 
 def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
