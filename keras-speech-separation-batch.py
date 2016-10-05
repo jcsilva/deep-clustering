@@ -51,12 +51,12 @@ def print_examples(x, y, v):
     img[eg == 1] = [0, 1, 0]
     if(k > 2):
         img[eg == 2] = [0, 0, 1]
-        img[eg == 3] = [0, 0, 0]
+
     img = img.reshape(imshape)
 
     img2 = np.zeros(eg.shape + (3,))
     vals = np.argmax(y.reshape((-1, k)), axis=1)
-    print(img2.shape, vals.shape)
+
     for i in range(k):
         t = np.zeros(3)
         t[i] = 1
@@ -66,22 +66,27 @@ def print_examples(x, y, v):
     img3 = x
 
     # Find most probable color permutation from prediction
-    p = None
-    s = np.float('Inf')
-    for pp in permutations([0, 1, 2]):
-        ss = np.sum(np.square(img2 - img[:, :, pp]))
-        if ss < s:
-            s = ss
-            p = pp
-    img = img[:, :, p]
-    img4 = 1 - (((img-img2+1)/2))
-    img4[np.all(img4 == .5, axis=2)] = 0
+  #  p = None
+  #  s = np.float('Inf')
+  #  for pp in permutations([0, 1, 2]):
+  #      ss = np.sum(np.square(img2 - img[:, :, pp]))
+  #      if ss < s:
+  #          s = ss
+  #          p = pp
+  #  img = img[:, :, p]
+  #  img4 = 1 - (((img-img2+1)/2))
+  #  img4[np.all(img4 == .5, axis=2)] = 0
 
-    fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1)
+  #  fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1)
+  #  ax1.imshow(img.swapaxes(0, 1), origin='lower')
+  #  ax2.imshow(img2.swapaxes(0, 1), origin='lower')
+  #  ax3.imshow(img4.swapaxes(0, 1), origin='lower')
+  #  ax4.imshow(img3.swapaxes(0, 1), origin='lower')
+
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1)
     ax1.imshow(img.swapaxes(0, 1), origin='lower')
     ax2.imshow(img2.swapaxes(0, 1), origin='lower')
-    ax3.imshow(img4.swapaxes(0, 1), origin='lower')
-    ax4.imshow(img3.swapaxes(0, 1), origin='lower')
+    ax3.imshow(img3.swapaxes(0, 1), origin='lower')
 
 
 def get_dims(generator, embedding_size):
@@ -102,7 +107,7 @@ def save_model(model, filename):
         json_file.write(model_json)
     # serialize weights to HDF5
     model.save_weights(filename + ".h5")
-    print("Saved model to disk")
+    print("Model saved to disk")
 
 
 def load_model(filename):
@@ -113,7 +118,7 @@ def load_model(filename):
     loaded_model = model_from_json(loaded_model_json)
     # load weights into new model
     loaded_model.load_weights(filename + ".h5")
-    print("Loaded model from disk")
+    print("Model loaded from disk")
     return loaded_model
 
 
@@ -222,13 +227,6 @@ def main():
     y = np.concatenate(Y, axis=1)
     v = np.concatenate(V, axis=1)
 
-#    np.save('x', x)
-#    np.save('y', y)
-#    np.save('v', v)
-#
-#    x = np.load('x.npy')
-#    y = np.load('y.npy')
-#    v = np.load('v.npy')
     print_examples(x, y, v)
 
 
