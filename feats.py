@@ -13,8 +13,7 @@ from python_speech_features import sigproc
 
 FRAME_LENGTH = .032
 FRAME_SHIFT = .008
-FS = 8000
-CONTEXT = 100
+TIMESTEPS = 100
 
 
 def squared_hann(M):
@@ -94,7 +93,7 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
 
         # STFT for mixed signal
         X = np.real(stft(wavsum, rate))
-        if len(X) <= CONTEXT:
+        if len(X) <= TIMESTEPS:
             continue
 
         # STFTs for individual signals
@@ -138,16 +137,16 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
         i = 0
 
         # Generating sequences
-        while i + CONTEXT < len(X):
-            batch_x.append(X[i:i+CONTEXT])
-            batch_y.append(Y[i:i+CONTEXT])
-            i += CONTEXT//2
+        while i + TIMESTEPS < len(X):
+            batch_x.append(X[i:i+TIMESTEPS])
+            batch_y.append(Y[i:i+TIMESTEPS])
+            i += TIMESTEPS//2
 
             batch_count = batch_count+1
 
             if batch_count == batch_size:
-                yield(np.array(batch_x).reshape((batch_size, CONTEXT, -1)),
-                      np.array(batch_y).reshape((batch_size, CONTEXT, -1)))
+                yield(np.array(batch_x).reshape((batch_size, TIMESTEPS, -1)),
+                      np.array(batch_y).reshape((batch_size, TIMESTEPS, -1)))
                 batch_x = []
                 batch_y = []
                 batch_count = 0
