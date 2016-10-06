@@ -11,22 +11,27 @@ from keras.layers import Dropout, Activation, Input, Reshape
 from keras.layers import Dense, LSTM, BatchNormalization
 from keras.layers import TimeDistributed, Bidirectional
 from keras.layers.noise import GaussianNoise
-from keras.optimizers import Adam, SGD
+from keras.optimizers import Nadam
+from keras.regularizers import l2
 from keras.models import model_from_json
 from keras.callbacks import ModelCheckpoint
 from feats import get_egs
 import numpy as np
 
-EMBEDDINGS_DIMENSION = 20
+EMBEDDINGS_DIMENSION = 50
 NUM_CLASSES = 2
-SIL_AS_CLASS = True
+SIL_AS_CLASS = False
+L2R=1e-6
 
-BATCH_SIZE = 5
+BATCH_SIZE = 10
+SAMPLES_PER_EPOCH = 1000
+NUM_EPOCHS = 10
+VALID_SIZE = 80
 TIMESTEPS = 100
 FREQSTEPS = 129
 
 
-def print_examples(x, y, v):
+def print_examples(x, y, v, mask=None):
     from sklearn.cluster import KMeans
     from itertools import permutations
     import matplotlib.pyplot as plt
@@ -35,21 +40,30 @@ def print_examples(x, y, v):
     x = x[0][::2]
     y = y[0][::2]
     v = v[0][::2]
+    if mask is not None:
+        mask = mask[0][::2]
 
     v = normalize(v, axis=1)
     k = NUM_CLASSES + int(SIL_AS_CLASS)
 
     x = x.reshape((-1, 129))
     y = y.reshape((-1, 129, k))
+    v = v.reshape((-1, EMBEDDINGS_DIMENSION))
+    v = normalize(v, axis=1)
     v = v.reshape((-1, 129, EMBEDDINGS_DIMENSION))
+    if mask is not None:
+        mask = mask.reshape((-1, 129))
+        p = k + 1
+    else:
+        p = 1
 
-    model = KMeans(k)
+    model = KMeans(p)
     eg = model.fit_predict(v.reshape(-1, EMBEDDINGS_DIMENSION))
     imshape = x.shape + (3,)
     img = np.zeros(eg.shape + (3,))
     img[eg == 0] = [1, 0, 0]
     img[eg == 1] = [0, 1, 0]
-    if(k > 2):
+    if(p > 2):
         img[eg == 2] = [0, 0, 1]
         img[eg == 3] = [0, 0, 0]
     img = img.reshape(imshape)
@@ -62,8 +76,11 @@ def print_examples(x, y, v):
         t[i] = 1
         img2[vals == i] = t
     img2 = img2.reshape(imshape)
+    img2[mask] = [0, 0, 1]
 
     img3 = x
+    img3 -= np.min(img3)
+    img3 **= 3
 
     # Find most probable color permutation from prediction
     p = None
@@ -81,7 +98,7 @@ def print_examples(x, y, v):
     ax1.imshow(img.swapaxes(0, 1), origin='lower')
     ax2.imshow(img2.swapaxes(0, 1), origin='lower')
     ax3.imshow(img4.swapaxes(0, 1), origin='lower')
-    ax4.imshow(img3.swapaxes(0, 1), origin='lower')
+    ax4.imshow(img3.swapaxes(0, 1), origin='lower', cmap='afmhot')
 
 
 def get_dims(generator, embedding_size):
@@ -102,7 +119,7 @@ def save_model(model, filename):
         json_file.write(model_json)
     # serialize weights to HDF5
     model.save_weights(filename + ".h5")
-    print("Saved model to disk")
+    print("Model saved to disk")
 
 
 def load_model(filename):
@@ -113,16 +130,15 @@ def load_model(filename):
     loaded_model = model_from_json(loaded_model_json)
     # load weights into new model
     loaded_model.load_weights(filename + ".h5")
-    print("Loaded model from disk")
+    print("Model loaded from disk")
     return loaded_model
 
 
 def affinitykmeans(Y, V):
     def norm(tensor):
         square_tensor = K.square(tensor)
-        tensor_sum = K.sum(square_tensor, axis=(1, 2))
-        frobenius_norm = K.sqrt(tensor_sum)
-        return frobenius_norm
+        frobenius_norm2 = K.sum(square_tensor, axis=(1, 2))
+        return frobenius_norm2
 
     def dot(x, y):
         return K.batch_dot(x, y, axes=(2, 1))
@@ -130,14 +146,15 @@ def affinitykmeans(Y, V):
     def T(x):
         return K.permute_dimensions(x, [0, 2, 1])
 
-    # V e Y estao vetorizados
-    # Antes de mais nada, volto ao formato de matrizes
     V = K.l2_normalize(K.reshape(V, [BATCH_SIZE,
                                      TIMESTEPS*FREQSTEPS,
                                      EMBEDDINGS_DIMENSION]), axis=-1)
     Y = K.reshape(Y, [BATCH_SIZE,
                       TIMESTEPS*FREQSTEPS,
                       NUM_CLASSES + int(SIL_AS_CLASS)])
+
+    silence_mask = K.sum(Y, axis=2, keepdims=True)
+    V = silence_mask * V
 
     return norm(dot(T(V), V)) - norm(dot(T(V), Y)) * 2 + norm(dot(T(Y), Y))
 
@@ -156,24 +173,30 @@ def train_nnet(train_list, valid_list, weights_path=None):
     inp_shape, out_shape = get_dims(train_gen,
                                     EMBEDDINGS_DIMENSION)
     model = Sequential()
-    model.add(BatchNormalization(mode=2, input_shape=inp_shape))
-    model.add(Bidirectional(LSTM(120, return_sequences=True,
-                                 activation='tanh'),
+    # model.add(BatchNormalization(mode=2, input_shape=inp_shape))
+    model.add(Bidirectional(LSTM(30, return_sequences=True,
+                                 W_regularizer=l2(L2R),
+                                 U_regularizer=l2(L2R),
+                                 b_regularizer=l2(L2R)),
                             input_shape=inp_shape))
     model.add(TimeDistributed(BatchNormalization(mode=2)))
-    model.add(TimeDistributed((GaussianNoise(0.775))))
+#    model.add(TimeDistributed((GaussianNoise(0.775))))
 #    model.add(TimeDistributed((Dropout(0.5))))
-    model.add(Bidirectional(LSTM(120, return_sequences=True,
-                                 activation='tanh')))
+    model.add(Bidirectional(LSTM(30, return_sequences=True,
+                                 W_regularizer=l2(L2R),
+                                 U_regularizer=l2(L2R),
+                                 b_regularizer=l2(L2R))))
     model.add(TimeDistributed(BatchNormalization(mode=2)))
-    model.add(TimeDistributed((GaussianNoise(0.775))))
+#    model.add(TimeDistributed((GaussianNoise(0.775))))
 #    model.add(TimeDistributed((Dropout(0.5))))
     model.add(TimeDistributed(Dense(out_shape[-1],
                                     init='uniform',
-                                    activation='tanh')))
+                                    activation='linear',
+                                    W_regularizer=l2(L2R),
+                                    b_regularizer=l2(L2R))))
 
 #    sgd = SGD(lr=1e-5, momentum=0.9, decay=0.0, nesterov=True)
-    sgd = Adam()
+    sgd = Nadam(clipnorm=1e-5)
     if weights_path:
         model.load_weights(weights_path)
 
@@ -192,22 +215,22 @@ def train_nnet(train_list, valid_list, weights_path=None):
 
     model.fit_generator(train_gen,
                         validation_data=valid_gen,
-                        nb_val_samples=1,
-                        samples_per_epoch=200,
-                        nb_epoch=10,
-                        max_q_size=10,
+                        nb_val_samples=VALID_SIZE,
+                        samples_per_epoch=SAMPLES_PER_EPOCH,
+                        nb_epoch=NUM_EPOCHS,
+                        max_q_size=512,
                         callbacks=callbacks_list)
     # score = model.evaluate(X_test, y_test, batch_size=16)
     save_model(model, "model")
 
 
 def main():
-    train_nnet('wavlist_spk', 'wavlist_spk')
+    train_nnet('train_list', 'valid_list')
     loaded_model = load_model("model")
     X = []
     Y = []
     V = []
-    gen = get_egs('wavlist_short', 2, 2, SIL_AS_CLASS)
+    gen = get_egs('valid_list', 2, 2, SIL_AS_CLASS)
     i = 0
     for inp, ref in gen:
         inp, ref = next(gen)
@@ -220,15 +243,16 @@ def main():
     x = np.concatenate(X, axis=1)
     y = np.concatenate(Y, axis=1)
     v = np.concatenate(V, axis=1)
+    
+    np.save('x', x)
+    np.save('y', y)
+    np.save('v', v)
 
-#    np.save('x', x)
-#    np.save('y', y)
-#    np.save('v', v)
-#
-#    x = np.load('x.npy')
-#    y = np.load('y.npy')
-#    v = np.load('v.npy')
-    print_examples(x, y, v)
+    #x = np.load('x.npy')
+    #y = np.load('y.npy')
+    #v = np.load('v.npy')
+    #print_examples(x, y, v)
+
 
 
 if __name__ == "__main__":
