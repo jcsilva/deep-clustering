@@ -18,7 +18,7 @@ from keras.callbacks import ModelCheckpoint
 from feats import get_egs
 import numpy as np
 
-EMBEDDINGS_DIMENSION = 50
+EMBEDDINGS_DIMENSION = 20
 NUM_CLASSES = 2
 SIL_AS_CLASS = False
 L2R=1e-6
@@ -55,7 +55,7 @@ def print_examples(x, y, v, mask=None):
         mask = mask.reshape((-1, 129))
         p = k + 1
     else:
-        p = 1
+        p = k
 
     model = KMeans(p)
     eg = model.fit_predict(v.reshape(-1, EMBEDDINGS_DIMENSION))
@@ -76,7 +76,8 @@ def print_examples(x, y, v, mask=None):
         t[i] = 1
         img2[vals == i] = t
     img2 = img2.reshape(imshape)
-    img2[mask] = [0, 0, 1]
+    if mask is not None:
+        img2[mask] = [0, 0, 1]
 
     img3 = x
     img3 -= np.min(img3)
@@ -225,33 +226,34 @@ def train_nnet(train_list, valid_list, weights_path=None):
 
 
 def main():
-    train_nnet('train_list', 'valid_list')
-    loaded_model = load_model("model")
-    X = []
-    Y = []
-    V = []
-    gen = get_egs('valid_list', 2, 2, SIL_AS_CLASS)
-    i = 0
-    for inp, ref in gen:
-        inp, ref = next(gen)
-        X.append(inp)
-        Y.append(ref)
-        V.append(loaded_model.predict(inp))
-        i += 1
-        if i == 8:
-            break
-    x = np.concatenate(X, axis=1)
-    y = np.concatenate(Y, axis=1)
-    v = np.concatenate(V, axis=1)
-    
-    np.save('x', x)
-    np.save('y', y)
-    np.save('v', v)
+#    train_nnet('wavelist_short', 'wavelist_short')
+#    loaded_model = load_model("model")
+#    X = []
+#    Y = []
+#    V = []
+#    gen = get_egs('wavelist_short', 2, 2, SIL_AS_CLASS)
+#    i = 0
+#    for inp, ref in gen:
+#        inp, ref = next(gen)
+#        X.append(inp)
+#        Y.append(ref)
+#        V.append(loaded_model.predict(inp))
+#        i += 1
+#        if i == 8:
+#            break
+#    x = np.concatenate(X, axis=1)
+#    y = np.concatenate(Y, axis=1)
+#    v = np.concatenate(V, axis=1)
+#    
+#    np.save('x', x)
+#    np.save('y', y)
+#    np.save('v', v)
 
-    #x = np.load('x.npy')
-    #y = np.load('y.npy')
-    #v = np.load('v.npy')
-    #print_examples(x, y, v)
+    x = np.load('x.npy')
+    y = np.load('y.npy')
+    v = np.load('v.npy')
+    m = np.max(x) - 2
+    print_examples(x, y, v)
 
 
 
