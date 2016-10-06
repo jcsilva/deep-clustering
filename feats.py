@@ -115,16 +115,6 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
             t[i] = 1
             Y[vals == i] = t
 
-        # EXPERIMENTAL: normalize mag spectra as weighted norm vectors instead
-        # of using unit vectors for "hard" classes
-#        if sil_as_class:
-#            print("This won't work with sil_as_class=True")
-#        from sklearn.preprocessing import normalize
-#        Y = np.transpose(specs, (1, 2, 0))
-#        Y = Y.reshape((-1, nc))
-#        Y = normalize(Y, axis=1)
-#        Y = Y.reshape(X.shape + (nc,))
-
         # Create mask for zeroing out gradients from silence components
         m = np.max(X) - 40./20  # Minus 40dB
         if sil_as_class:
@@ -134,15 +124,30 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
         else:
             z = np.zeros(nc)
             Y[X < m] = z
-        i = 0
+
+        # EXPERIMENTAL: normalize mag spectra as weighted norm vectors instead
+        # of using unit vectors for "hard" classes
+#        if sil_as_class:
+#            print("This won't work with sil_as_class=True")
+#        Y = np.transpose(specs, (1, 2, 0))
+#        Y = np.power(Y, 10)
+#        norm = np.linalg.norm(Y, axis=2, keepdims=True)
+#        Y = Y/norm
+#        m = X - np.min(X)
+#        m = m / np.max(m)
+#        m = np.expand_dims(m, -1)
+#        Y *= m
 
         # Generating sequences
+        i = 0
         while i + TIMESTEPS < len(X):
             # only chuncks with more than 40% of bins classified as speech
             # will be used.
-            if np.sum(Y[i:i+TIMESTEPS]) / (Y[i:i+TIMESTEPS].size/nc) < 0.4:
-                i += TIMESTEPS//2
-                continue
+            if sil_as_class:
+                if(np.sum(Y[i:i+TIMESTEPS]) /
+                   (Y[i:i+TIMESTEPS].size/nc) < 0.4):
+                    i += TIMESTEPS//2
+                    continue
 
             batch_x.append(X[i:i+TIMESTEPS])
             batch_y.append(Y[i:i+TIMESTEPS])
@@ -162,8 +167,8 @@ if __name__ == "__main__":
     a = get_egs('wavlist_short', 2, 2, False)
     k = 6
     for i, j in a:
-        print(i.shape, j.shape)
-        print(j[0][0])
+#        print(i.shape, j.shape)
+#        print(j[0][0])
         k -= 1
         if k == 0:
             break
