@@ -106,7 +106,7 @@ def get_dims(generator, embedding_size):
     k = NUM_CLASSES + int(SIL_AS_CLASS)
     inp_shape = inp.shape[1:]
     out_shape = list(out.shape[1:])
-    out_shape[-1] *= embedding_size/k
+    out_shape[-1] *= float(embedding_size)/k
     out_shape[-1] = int(out_shape[-1])
     out_shape = tuple(out_shape)
     return inp_shape, out_shape
