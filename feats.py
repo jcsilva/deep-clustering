@@ -9,11 +9,7 @@ import random
 import soundfile as sf
 from scipy.signal import decimate
 from python_speech_features import sigproc
-
-
-FRAME_LENGTH = .032
-FRAME_SHIFT = .008
-TIMESTEPS = 100
+from config import FRAME_LENGTH, FRAME_SHIFT, TIMESTEPS
 
 
 def squared_hann(M):
@@ -103,9 +99,9 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
         specs = np.array(specs)
 
         if sil_as_class:
-            nc = k + 1
+            nc = max_mix + 1
         else:
-            nc = k
+            nc = max_mix
 
         # Get dominant spectra indexes, create one-hot outputs
         Y = np.zeros(X.shape + (nc,))
@@ -167,8 +163,8 @@ if __name__ == "__main__":
     a = get_egs('wavlist_short', 2, 2, False)
     k = 6
     for i, j in a:
-#        print(i.shape, j.shape)
-#        print(j[0][0])
+        print(i.shape, j.shape)
+        print(j[0][0])
         k -= 1
         if k == 0:
             break
