@@ -26,8 +26,8 @@ from config import DROPOUT, RDROPOUT, L2R, CLIPNORM
 def get_dims(generator, embedding_size):
     inp, out = next(generator)
     k = MAX_MIX + int(SIL_AS_CLASS)
-    inp_shape = inp.shape[1:]
-    out_shape = list(out.shape[1:])
+    inp_shape = inp['input'].shape[1:]
+    out_shape = list(out['hard_output'].shape[1:])
     out_shape[-1] *= float(embedding_size)/k
     out_shape[-1] = int(out_shape[-1])
     out_shape = tuple(out_shape)
@@ -79,6 +79,26 @@ def affinitykmeans(Y, V):
     return norm(dot(T(V), V)) - norm(dot(T(V), Y)) * 2 + norm(dot(T(Y), Y))
 
 
+def affinitypca(Y, V):
+    def norm(tensor):
+        square_tensor = K.square(tensor)
+        frobenius_norm2 = K.sum(square_tensor, axis=(1, 2))
+        return frobenius_norm2
+
+    def dot(x, y):
+        return K.batch_dot(x, y, axes=(2, 1))
+
+    def T(x):
+        return K.permute_dimensions(x, [0, 2, 1])
+
+    V = K.reshape(V, [BATCH_SIZE, -1,
+                      EMBEDDINGS_DIMENSION])
+    Y = K.reshape(Y, [BATCH_SIZE, -1,
+                      MAX_MIX + int(SIL_AS_CLASS)])
+
+    return norm(dot(T(V), V)) - norm(dot(T(V), Y)) * 2 + norm(dot(T(Y), Y))
+
+
 def train_nnet(train_list, valid_list, weights_path=None):
     train_gen = get_egs(train_list,
                         min_mix=MIN_MIX,
@@ -93,7 +113,7 @@ def train_nnet(train_list, valid_list, weights_path=None):
     inp_shape, out_shape = get_dims(train_gen,
                                     EMBEDDINGS_DIMENSION)
 
-    inp = Input(shape=inp_shape)
+    inp = Input(shape=inp_shape, name='input')
     x = inp
     for i in range(NUM_RLAYERS):
         x = Bidirectional(LSTM(SIZE_RLAYERS, return_sequences=True,
@@ -104,16 +124,23 @@ def train_nnet(train_list, valid_list, weights_path=None):
                                dropout_U=RDROPOUT),
                           input_shape=inp_shape)(x)
         x = TimeDistributed(BatchNormalization(mode=2))(x)
-    x = TimeDistributed(Dense(out_shape[-1],
-                              activation='linear',
-                              W_regularizer=l2(L2R),
-                              b_regularizer=l2(L2R)))(x)
+    hard_out = TimeDistributed(Dense(out_shape[-1],
+                                     activation='linear',
+                                     W_regularizer=l2(L2R),
+                                     b_regularizer=l2(L2R)),
+                               name='hard_output')(x)
+    soft_out = TimeDistributed(Dense(out_shape[-1],
+                                     activation='linear',
+                                     W_regularizer=l2(L2R),
+                                     b_regularizer=l2(L2R)),
+                               name='soft_output')(x)
 
-    sgd = Nadam(clipnorm=CLIPNORM)
-    model = Model(input=inp, output=x)
+    model = Model(input=[inp], output=[hard_out, soft_out])
     if weights_path:
         model.load_weights(weights_path)
-    model.compile(loss=affinitykmeans, optimizer=sgd)
+    model.compile(loss={'hard_output': affinitykmeans,
+                        'soft_output': affinitypca},
+                  optimizer=Nadam(clipnorm=CLIPNORM))
 
     # checkpoint
     filepath = "weights-improvement-{epoch:02d}-{val_loss:.2f}.h5"

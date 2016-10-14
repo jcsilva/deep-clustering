@@ -11,7 +11,7 @@ from feats import get_egs
 
 
 def main():
-    train_nnet('wavlist_spk', 'wavlist_spk')
+#    train_nnet('wavlist_short', 'wavlist_short')
     loaded_model = load_model("model")
     X = []
     Y = []
@@ -20,9 +20,9 @@ def main():
     i = 0
     for inp, ref in gen:
         inp, ref = next(gen)
-        X.append(inp)
-        Y.append(ref)
-        V.append(loaded_model.predict(inp))
+        X.append(inp['input'])
+        Y.append(ref['hard_output'])
+        V.append(loaded_model.predict(inp)[1])
         i += 1
         if i == 8:
             break
@@ -38,7 +38,7 @@ def main():
     y = np.load('y.npy')
     v = np.load('v.npy')
     m = np.max(x) - 2
-    print_examples(x, y, v, 2, EMBEDDINGS_DIMENSION, mask=x < m)
+    print_examples(x, y, v, 2, EMBEDDINGS_DIMENSION)
 
 
 if __name__ == "__main__":

@@ -45,7 +45,9 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
     speaker_wavs = {}
     batch_x = []
     batch_y = []
+    batch_s = []
     batch_count = 0
+
     while True:  # Generate examples indefinitely
         # Select number of files to mix
         k = np.random.randint(min_mix, max_mix+1)
@@ -123,16 +125,15 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
 
         # EXPERIMENTAL: normalize mag spectra as weighted norm vectors instead
         # of using unit vectors for "hard" classes
-#        if sil_as_class:
-#            print("This won't work with sil_as_class=True")
-#        Y = np.transpose(specs, (1, 2, 0))
-#        Y = np.power(Y, 10)
-#        norm = np.linalg.norm(Y, axis=2, keepdims=True)
-#        Y = Y/norm
-#        m = X - np.min(X)
-#        m = m / np.max(m)
-#        m = np.expand_dims(m, -1)
-#        Y *= m
+        if sil_as_class:
+            print("This won't work with sil_as_class=True")
+        S = np.transpose(specs, (1, 2, 0))
+        norm = np.linalg.norm(S, axis=2, keepdims=True)
+        S = S/norm
+        m = X - np.min(X)
+        m = m / np.max(m)
+        m = np.expand_dims(m, -1)
+        S *= m
 
         # Generating sequences
         i = 0
@@ -147,15 +148,24 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
 
             batch_x.append(X[i:i+TIMESTEPS])
             batch_y.append(Y[i:i+TIMESTEPS])
+            batch_s.append(S[i:i+TIMESTEPS])
             i += TIMESTEPS//2
 
             batch_count = batch_count+1
 
             if batch_count == batch_size:
-                yield(np.array(batch_x).reshape((batch_size, TIMESTEPS, -1)),
-                      np.array(batch_y).reshape((batch_size, TIMESTEPS, -1)))
+                inp = np.array(batch_x).reshape((batch_size,
+                                                 TIMESTEPS, -1))
+                hard_out = np.array(batch_y).reshape((batch_size,
+                                                      TIMESTEPS, -1))
+                soft_out = np.array(batch_s).reshape((batch_size,
+                                                      TIMESTEPS, -1))
+                yield({'input': inp},
+                      {'hard_output': hard_out,
+                       'soft_output': soft_out})
                 batch_x = []
                 batch_y = []
+                batch_s = []
                 batch_count = 0
 
 
