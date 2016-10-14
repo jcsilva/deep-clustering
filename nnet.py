@@ -17,10 +17,10 @@ from keras.models import model_from_json
 from keras.callbacks import ModelCheckpoint
 from feats import get_egs
 
-from configs import EMBEDDINGS_DIMENSION, MIN_MIX, MAX_MIX, SIL_AS_CLASS
-from configs import NUM_RLAYERS, SIZE_RLAYERS
-from configs import BATCH_SIZE, SAMPLES_PER_EPOCH, NUM_EPOCHS, VALID_SIZE
-from configs import DROPOUT, RDROPOUT, L2R, CLIPNORM
+from config import EMBEDDINGS_DIMENSION, MIN_MIX, MAX_MIX, SIL_AS_CLASS
+from config import NUM_RLAYERS, SIZE_RLAYERS
+from config import BATCH_SIZE, SAMPLES_PER_EPOCH, NUM_EPOCHS, VALID_SIZE
+from config import DROPOUT, RDROPOUT, L2R, CLIPNORM
 
 
 def get_dims(generator, embedding_size):
