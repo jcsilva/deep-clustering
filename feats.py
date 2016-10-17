@@ -138,7 +138,7 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
         # Generating sequences
         i = 0
         while i + TIMESTEPS < len(X):
-            # only chuncks with more than 40% of bins classified as speech
+            # only chunks with more than 40% of bins classified as speech
             # will be used.
             if sil_as_class:
                 if(np.sum(Y[i:i+TIMESTEPS]) /

@@ -124,16 +124,20 @@ def train_nnet(train_list, valid_list, weights_path=None):
                                dropout_U=RDROPOUT),
                           input_shape=inp_shape)(x)
         x = TimeDistributed(BatchNormalization(mode=2))(x)
-    hard_out = TimeDistributed(Dense(out_shape[-1],
-                                     activation='linear',
-                                     W_regularizer=l2(L2R),
-                                     b_regularizer=l2(L2R)),
-                               name='hard_output')(x)
     soft_out = TimeDistributed(Dense(out_shape[-1],
                                      activation='linear',
                                      W_regularizer=l2(L2R),
                                      b_regularizer=l2(L2R)),
                                name='soft_output')(x)
+    x = TimeDistributed(Dense(SIZE_RLAYERS,
+                              activation='tanh',
+                              W_regularizer=l2(L2R),
+                              b_regularizer=l2(L2R)))(soft_out)
+    hard_out = TimeDistributed(Dense(out_shape[-1],
+                                     activation='linear',
+                                     W_regularizer=l2(L2R),
+                                     b_regularizer=l2(L2R)),
+                               name='hard_output')(x)
 
     model = Model(input=[inp], output=[hard_out, soft_out])
     if weights_path:

@@ -14,24 +14,21 @@ def print_examples(x, y, v, num_classes, embedding_size,
     from itertools import permutations
     import matplotlib.pyplot as plt
     import numpy as np
-    from sklearn.preprocessing import normalize
-    from scipy.spatial.distance import cosine
+    from scipy.spatial.distance import cosine, euclidean
 
     x = x[0][::2]
     y = y[0][::2]
     v = v[0][::2]
-    v = normalize(v, axis=1)
+#    v /= np.linalg.norm(v, axis=1, keepdims=True)
     if mask is not None:
         mask = mask[0][::2]
 
-    v = normalize(v, axis=1)
     k = num_classes
     K = embedding_size
 
     x = x.reshape((-1, 129))
     y = y.reshape((-1, 129, k))
     v = v.reshape((-1, K))
-    v = normalize(v, axis=1)
     print(v[23])
     if mask is not None:
         mask = mask.reshape((-1,))
@@ -56,7 +53,6 @@ def print_examples(x, y, v, num_classes, embedding_size,
         img = img.reshape(imshape)
         img2 = np.zeros(eg.shape + (3,))
         vals = np.argmax(y.reshape((-1, k)), axis=1)
-        print(img2.shape, vals.shape)
         for i in range(k):
             t = np.zeros(3)
             t[i] = 1
@@ -69,15 +65,27 @@ def print_examples(x, y, v, num_classes, embedding_size,
         cc = model.cluster_centers_
         for i in range(len(cc)):
             for j in range(len(img)):
-                img[j][i] = (np.pi + cosine(v[j], cc[i])) / 2 / np.pi
-            img[j] = np.max(img[j]) - img[j]
-            img[j] = normalize(img[j])
+                img[j][i] = euclidean(v[j], cc[i])
+#        for j in range(len(img)):
+#            img[j] = np.max(img[j]) - img[j]
+#            img[j] /= np.linalg.norm(img[j], axis=-1, keepdims=True)
+        for i in range(len(cc)):
+            img[:, i] = np.max(img[:, i]) - img[:, i]
+            img[:, i] /= np.max(img[:, i], axis=-1, keepdims=True)
         img = img.reshape(imshape)
         img2 = np.zeros(eg.shape + (3,))
-        vals = y.reshape((-1, k))
-        vals /= np.linalg.norm(vals, axis=-1, keepdims=True)
+#        vals = y.reshape((-1, k))
+#        vals /= np.linalg.norm(vals, axis=-1, keepdims=True)
+#        for i in range(k):
+#            img2[:, i] = vals[:, i]
+#        img2 = img2.reshape(imshape)
+#        if mask is not None:
+#            img2[mask] = [0, 0, 1]
+        vals = np.argmax(y.reshape((-1, k)), axis=1)
         for i in range(k):
-            img2[:, i] = vals[:, i]
+            t = np.zeros(3)
+            t[i] = 1
+            img2[vals == i] = t
         img2 = img2.reshape(imshape)
         if mask is not None:
             img2[mask] = [0, 0, 1]
