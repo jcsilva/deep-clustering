@@ -7,7 +7,6 @@ Created on Mon Oct 17 10:20:31 2016
 import soundfile as sf
 import numpy as np
 from scipy.spatial.distance import cosine, euclidean
-from python_speech_features import sigproc
 from config import FRAME_LENGTH, FRAME_SHIFT
 
 
@@ -67,8 +66,7 @@ def istft(X, overlap=FRAME_LENGTH//FRAME_SHIFT):
     return x
 
 
-def prepare_features(wavpath, nnet, pred_index=0):
-    timesteps = int(nnet.input.get_shape()[1])
+def prepare_features(wavpath, nnet, pred_index=1):
     freq = int(nnet.input.get_shape()[2])
     K = int(nnet.output[1].get_shape()[2]) // freq
     sig, rate = sf.read(wavpath)
@@ -79,29 +77,16 @@ def prepare_features(wavpath, nnet, pred_index=0):
     sig = sig/np.max(np.abs(sig))
     spec = stft(sig)
     mag = np.real(np.log10(spec))
-    X = []
-    for i in range(0, len(mag)-timesteps, timesteps):
-        X.append(mag[i:i+timesteps])
-    X.append(mag[-timesteps:])
-    X = np.array(X)
+    X = mag.reshape((1,) + mag.shape)
     V = nnet.predict(X)[pred_index]
 
-    # Removing redundant predictions from the end of the spectrum
     x = X.reshape((-1, freq))
-    v = V.reshape((-1, freq, K))
-    lastx = np.copy(x[-timesteps:])
-    lastv = np.copy(v[-timesteps:])
-    x = x[:len(mag)]
-    v = v[:len(mag)]
-    x[-timesteps:] = lastx
-    v[-timesteps:] = lastv
+    v = V.reshape((-1, K))
 
-    # Linearize v for clustering:
-    v = v.reshape((-1, K))
     return spec, rate, x, v
 
 
-def soft_print_predict(wavpath, nnet, num_sources, attenuate_factor=1):
+def soft_print_predict(wavpath, nnet, num_sources, wav_out=None, mask_power=3):
     k = num_sources
     freq = int(nnet.input.get_shape()[2])
     spec, rate, x, v = prepare_features(wavpath, nnet)
@@ -126,12 +111,16 @@ def soft_print_predict(wavpath, nnet, num_sources, attenuate_factor=1):
         imgs[:, i] /= np.linalg.norm(imgs[:, i], axis=-1, keepdims=True)
     for i in range(len(imgs)):
         imgs[i] /= np.max(imgs[i], axis=-1, keepdims=True)
-    imgs **= attenuate_factor
+    imgs **= mask_power
 
     import matplotlib.pyplot as plt
     fig, axes = plt.subplots(k+1, 1)
     for axis, img in zip(axes[:-1], imgs):
-        axis.imshow(img.reshape(-1, freq).swapaxes(0, 1),
+        mask = img.reshape(-1, freq)
+        mask[:, [0, 1, -5, -4, -3, -2, -1]] /= 10
+        mask[mask > 1] = 1
+        mask /= np.max(mask)
+        axis.imshow(mask.swapaxes(0, 1),
                     origin='lower', cmap='afmhot',
                     vmin=0, vmax=1)
     x -= np.min(x)
@@ -140,6 +129,8 @@ def soft_print_predict(wavpath, nnet, num_sources, attenuate_factor=1):
     axes[-1].imshow(x.reshape(-1, freq).swapaxes(0, 1),
                     origin='lower', cmap='afmhot')
     plt.show()
+    if wav_out is None:
+        return
 
     spec = np.log(spec)
     mag = np.real(spec)
@@ -147,11 +138,12 @@ def soft_print_predict(wavpath, nnet, num_sources, attenuate_factor=1):
     i = 1
     for img in imgs:
         mask = img.reshape(-1, freq)
+        mask[:, [0, -2, -1]] /= 10
         mask[mask > 1] = 1
         sig_out = istft(np.exp(mag + 1j * phase) * mask)
         sig_out -= np.mean(sig_out)
         sig_out /= np.max(sig_out)
-        sf.write('sep{i}.wav'.format(i=i), sig_out, rate)
+        sf.write(wav_out + '{i}.wav'.format(i=i), sig_out, rate)
         i += 1
 
 
@@ -180,6 +172,8 @@ def hard_print_predict(wavpath, nnet, num_sources, wav_out=None):
     axes[-1].imshow(x.reshape(-1, freq).swapaxes(0, 1),
                     origin='lower', cmap='afmhot')
     plt.show()
+    if wav_out is None:
+        return
 
     spec = np.log(spec)
     mag = np.real(spec)
@@ -190,5 +184,98 @@ def hard_print_predict(wavpath, nnet, num_sources, wav_out=None):
         sig_out = istft(np.exp(mag + 1j * phase) * mask)
         sig_out -= np.mean(sig_out)
         sig_out /= np.max(sig_out)
-        sf.write('sep{i}.wav'.format(i=i), sig_out, rate)
+        sf.write(wav_out + '{i}.wav'.format(i=i), sig_out, rate)
+        i += 1
+
+
+def print_pca(wavpath, nnet, num_dims, wav_out=None):
+    k = num_dims
+    freq = int(nnet.input.get_shape()[2])
+    spec, rate, x, v = prepare_features(wavpath, nnet, 1)
+
+    from sklearn.decomposition import PCA
+    pca = PCA(n_components=k)
+    egs = np.random.randint(len(v), size=2000)
+    pca.fit(v[egs])
+    imgs = pca.transform(v).swapaxes(0, 1)
+
+    import matplotlib.pyplot as plt
+    fig, axes = plt.subplots(k+1, 1)
+    for axis, img in zip(axes[:-1], imgs):
+        axis.imshow(img.reshape(-1, freq).swapaxes(0, 1),
+                    origin='lower', cmap='afmhot',
+                    vmin=-1, vmax=1)
+    x -= np.min(x)
+    x /= np.max(x)
+    x **= 2
+    axes[-1].imshow(x.reshape(-1, freq).swapaxes(0, 1),
+                    origin='lower', cmap='afmhot')
+    plt.show()
+    if wav_out is None:
+        return
+
+    spec = np.log(spec)
+    mag = np.real(spec)
+    phase = np.imag(spec)
+    i = 1
+    for img in imgs:
+        mask = img.reshape(-1, freq)
+        mask += 1
+        mask /= 2
+        mask **= 3 + .5
+        mask[mask > 1] = 1
+        sig_out = istft(np.exp(mag + 1j * phase) * mask)
+        sig_out -= np.mean(sig_out)
+        sig_out /= np.max(sig_out)
+        sf.write(wav_out + '{i}.wav'.format(i=i), sig_out, rate)
+        i += 1
+
+
+def print_lda(wavpath, nnet, num_dims, wav_out=None):
+    k = num_dims
+    freq = int(nnet.input.get_shape()[2])
+    spec, rate, x, v = prepare_features(wavpath, nnet, 1)
+
+    from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
+    from sklearn.cluster import KMeans
+    km = KMeans(k)
+    cls = km.fit_predict(v)
+    lda = LDA(n_components=k, solver='svd')
+    egs = np.random.randint(len(v), size=2000)
+    lda.fit(v[egs], cls[egs])
+    imgs = lda.predict_proba(v).swapaxes(0, 1)
+
+    def get_mask(img):
+        mask = img.reshape(-1, freq)
+        mask += .02
+        mask[mask > 1] = 1
+        return mask
+
+    import matplotlib.pyplot as plt
+    fig, axes = plt.subplots(k+1, 1)
+    for axis, img in zip(axes[:-1], imgs):
+        mask = get_mask(img)
+        axis.imshow(mask.swapaxes(0, 1),
+                    origin='lower', cmap='afmhot',
+                    vmin=0, vmax=1)
+    x -= np.min(x)
+    x /= np.max(x)
+    x **= 2
+    axes[-1].imshow(x.reshape(-1, freq).swapaxes(0, 1),
+                    origin='lower', cmap='afmhot')
+    plt.show()
+
+    if wav_out is None:
+        return
+
+    spec = np.log(spec)
+    mag = np.real(spec)
+    phase = np.imag(spec)
+    i = 1
+    for img in imgs:
+        mask = get_mask(img)
+        sig_out = istft(np.exp(mag + 1j * phase) * mask)
+        sig_out -= np.mean(sig_out)
+        sig_out /= np.max(sig_out)
+        sf.write(wav_out + '{i}.wav'.format(i=i), sig_out, rate)
         i += 1
