@@ -4,129 +4,98 @@ Created on Thu Oct  6 15:48:14 2016
 
 @author: valterf
 """
+from feats import stft
 
 
-def print_examples(x, y, v, num_classes, embedding_size,
-                   mask=None,
-                   soft_clustering=False,
-                   show_subspace=True):
-    from sklearn.cluster import KMeans
-    from itertools import permutations
-    import matplotlib.pyplot as plt
+def print_examples(wavpaths, nnet, db_threshold=None,
+                   source_intensities=None,
+                   ignore_background=False,
+                   pred_index=1):
+    import soundfile as sf
     import numpy as np
-    from scipy.spatial.distance import cosine, euclidean
+    k = len(wavpaths)
+    kk = k
+    if db_threshold is not None:
+        kk += 1
+    freq = int(nnet.input.get_shape()[2])
+    K = int(nnet.output[1].get_shape()[2]) // freq
+    sigsum = None
+    specs = []
+    sigs = []
+    for i, wavpath in enumerate(wavpaths):
+        sig, rate = sf.read(wavpath)
+        if rate != 8000:
+            raise Exception("Currently only 8000 Hz audio is supported. " +
+                            "You have provided a {r} Hz one".format(r=rate))
+        sig = sig - np.mean(sig)
+        sig = sig/np.max(np.abs(sig))
+        if source_intensities is not None:
+            sig *= source_intensities[i]
+        if sigsum is None:
+            sigsum = sig
+        else:
+            sigsum = sigsum[:len(sig)] + sig[:len(sigsum)]
+        sigs.append(sig)
+    for sig in sigs:
+        specs.append(np.real(stft(sig[:len(sigsum)], rate)))
+    specs = np.transpose(np.array(specs), (1, 2, 0))
+    sigsum = sigsum - np.mean(sigsum)
+    sigsum = sigsum/np.max(np.abs(sigsum))
+    mag = np.real(stft(sigsum, rate))
+    X = mag.reshape((1,) + mag.shape)
+    V = nnet.predict(X)[pred_index]
+    x = X.reshape((-1, freq))
+    if db_threshold is not None:
+        v = V.reshape((-1, freq, K))
+        m = np.max(x) - db_threshold / 20.
+        if ignore_background:
+            v[x < m] = 0
+    v = V.reshape((-1, K))
+    from sklearn.cluster import KMeans
+    km = KMeans(kk)
+    eg = km.fit_predict(v)
+    ref = np.argmax(specs.reshape((x.size, k)), axis=1)
+    if db_threshold is not None:
+        ref[(x < m).reshape(ref.shape)] = kk - 1
 
-    x = x[0][::2]
-    y = y[0][::2]
-    v = v[0][::2]
-#    v /= np.linalg.norm(v, axis=1, keepdims=True)
-    if mask is not None:
-        mask = mask[0][::2]
+    # Permute classes for oracle alignment
+    eg_p = np.zeros((x.size, kk))
+    ref_p = np.zeros((x.size, kk))
+    for i in range(kk):
+        eg_p[eg == i, i] = 1
+        ref_p[ref == i, i] = 1
+    p = None
+    s = np.float('Inf')
+    from itertools import permutations
+    for pp in permutations(list(range(kk))):
+        ss = np.sum(np.abs(ref_p - eg_p[:, pp]))
+        if ss < s:
+            s = ss
+            p = pp
+    eg_p = eg_p[:, p]
+    eg = np.argmax(eg_p, axis=1)
 
-    k = num_classes
-    K = embedding_size
-
-    x = x.reshape((-1, 129))
-    y = y.reshape((-1, 129, k))
-    v = v.reshape((-1, K))
-    print(v[23])
-    if mask is not None:
-        mask = mask.reshape((-1,))
-#        v[mask] = 0
-        mask = mask.reshape((-1, 129))
-        p = k + 1
-    else:
-        p = k
-
-    model = KMeans(p)
-    eg = model.fit_predict(v)
     imshape = x.shape + (3,)
     img = np.zeros((x.size, 3))
+    for i in range(min(k, 3)):
+        img[eg == i, i] = 1
+    if db_threshold is not None:
+        img[eg == kk - 1] = [0, 0, 0]
+    img = img.reshape(imshape)
 
-    # Hard clustering
-    if not soft_clustering:
-        img[eg == 0] = [1, 0, 0]
-        img[eg == 1] = [0, 1, 0]
-        if(p > 2):
-            img[eg == 2] = [0, 0, 1]
-            img[eg == 3] = [0, 0, 0]
-        img = img.reshape(imshape)
-        img2 = np.zeros(eg.shape + (3,))
-        vals = np.argmax(y.reshape((-1, k)), axis=1)
-        for i in range(k):
-            t = np.zeros(3)
-            t[i] = 1
-            img2[vals == i] = t
-        img2 = img2.reshape(imshape)
-        if mask is not None:
-            img2[mask] = [0, 0, 1]
-    # Soft clustering
-    else:
-        cc = model.cluster_centers_
-        for i in range(len(cc)):
-            for j in range(len(img)):
-                img[j][i] = euclidean(v[j], cc[i])
-#        for j in range(len(img)):
-#            img[j] = np.max(img[j]) - img[j]
-#            img[j] /= np.linalg.norm(img[j], axis=-1, keepdims=True)
-        for i in range(len(cc)):
-            img[:, i] = np.max(img[:, i]) - img[:, i]
-            img[:, i] /= np.max(img[:, i], axis=-1, keepdims=True)
-        img = img.reshape(imshape)
-        img2 = np.zeros(eg.shape + (3,))
-#        vals = y.reshape((-1, k))
-#        vals /= np.linalg.norm(vals, axis=-1, keepdims=True)
-#        for i in range(k):
-#            img2[:, i] = vals[:, i]
-#        img2 = img2.reshape(imshape)
-#        if mask is not None:
-#            img2[mask] = [0, 0, 1]
-        vals = np.argmax(y.reshape((-1, k)), axis=1)
-        for i in range(k):
-            t = np.zeros(3)
-            t[i] = 1
-            img2[vals == i] = t
-        img2 = img2.reshape(imshape)
-        if mask is not None:
-            img2[mask] = [0, 0, 1]
+    img2 = np.zeros((x.size, 3))
+    for i in range(min(k, 3)):
+        img2[ref == i, i] = 1
+    if db_threshold is not None:
+        img2[ref == kk - 1] = [0, 0, 0]
+    img2 = img2.reshape(imshape)
 
-    # Log spectrum plot with better contrast
     img3 = x
     img3 -= np.min(img3)
     img3 **= 3
 
-    # Find most probable color permutation from prediction
-    p = None
-    s = np.float('Inf')
-    for pp in permutations([0, 1, 2]):
-        ss = np.sum(np.square(img2 - img[:, :, pp]))
-        if ss < s:
-            s = ss
-            p = pp
-    img = img[:, :, p]
-    img = img.reshape(imshape)
-    img4 = 1 - (((img-img2+1)/2))
-    img4[np.all(img4 == .5, axis=2)] = 0
-
-    fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1)
-    ax1.imshow(img.swapaxes(0, 1), origin='lower', cmap='afmhot')
-    ax2.imshow(img2.swapaxes(0, 1), origin='lower', cmap='afmhot')
-    ax3.imshow(img4.swapaxes(0, 1), origin='lower')
-    ax4.imshow(img3.swapaxes(0, 1), origin='lower', cmap='afmhot')
-
-    if show_subspace:
-        import matplotlib.pyplot as plt
-        #from sklearn.manifold import Isomap as manifold
-        from sklearn.decomposition import PCA as manifold
-        man = manifold(n_components=2)
-        cls = eg
-        egs = np.random.randint(len(v), size=500)
-        k = man.fit_transform(v[egs, :])
-        x, y = zip(*k)
-        cls = cls[egs]
-        plt.figure()
-        for x, y, c in zip(x, y, cls):
-            color = np.zeros(3)
-            color[p[c]] = 1
-            plt.scatter(x, y, color=color)
-        plt.show()
+    import matplotlib.pyplot as plt
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1)
+    ax1.imshow(img.swapaxes(0, 1), origin='lower')
+    ax2.imshow(img2.swapaxes(0, 1), origin='lower')
+    ax3.imshow(img3.swapaxes(0, 1), origin='lower', cmap='afmhot')
