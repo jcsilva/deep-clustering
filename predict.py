@@ -3,6 +3,12 @@
 Created on Mon Oct 17 10:20:31 2016
 
 @author: valterf
+STFT/ISTFT derived from Basj's implementation[1], with minor modifications,
+such as the replacement of the hann window by its root square, as specified in
+the original paper from Hershey et. al. (2015)[2]
+
+[1] http://stackoverflow.com/a/20409020
+[2] https://arxiv.org/abs/1508.04306
 """
 import soundfile as sf
 import numpy as np
@@ -10,7 +16,7 @@ from scipy.spatial.distance import cosine, euclidean
 from config import FRAME_LENGTH, FRAME_SHIFT
 
 
-def squared_hann(M):
+def sqrt_hann(M):
     return np.sqrt(np.hanning(M))
 
 
@@ -31,13 +37,9 @@ def stft(x, fftsize=int(FRAME_LENGTH*8000),
         return: linear domain spectrum (2D complex array)
     """
     hop = int(np.round(fftsize / overlap))
-
-    # better reconstruction with this trick +1)[:-1]
-    w = squared_hann(fftsize)
-
+    w = sqrt_hann(fftsize)
     out = np.array([np.fft.rfft(w*x[i:i+fftsize])
                     for i in range(0, len(x)-fftsize, hop)])
-
     return out
 
 
@@ -55,7 +57,7 @@ def istft(X, overlap=FRAME_LENGTH//FRAME_SHIFT):
     """
     fftsize = (X.shape[1] - 1) * 2
     hop = int(np.round(fftsize / overlap))
-    w = squared_hann(fftsize)
+    w = sqrt_hann(fftsize)
     x = np.zeros(X.shape[0]*hop)
     wsum = np.zeros(X.shape[0]*hop)
     for n, i in enumerate(range(0, len(x)-fftsize, hop)):
