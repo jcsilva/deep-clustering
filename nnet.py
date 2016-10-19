@@ -26,7 +26,7 @@ from config import DROPOUT, RDROPOUT, L2R, CLIPNORM
 def get_dims(generator, embedding_size):
     inp, out = next(generator)
     k = MAX_MIX + int(SIL_AS_CLASS)
-    inp_shape = inp['input'].shape[1:]
+    inp_shape = (None, inp['input'].shape[-1])
     out_shape = list(out['hard_output'].shape[1:])
     out_shape[-1] *= float(embedding_size)/k
     out_shape[-1] = int(out_shape[-1])
