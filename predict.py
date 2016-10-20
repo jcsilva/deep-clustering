@@ -70,7 +70,10 @@ def istft(X, overlap=FRAME_LENGTH//FRAME_SHIFT):
 
 def prepare_features(wavpath, nnet, pred_index=1):
     freq = int(nnet.input.get_shape()[2])
-    K = int(nnet.output[1].get_shape()[2]) // freq
+    if(isinstance(nnet.output, list)):
+        K = int(nnet.output[pred_index].get_shape()[2]) // freq
+    else:
+        K = int(nnet.output.get_shape()[2]) // freq
     sig, rate = sf.read(wavpath)
     if rate != 8000:
         raise Exception("Currently only 8000 Hz audio is supported. " +
@@ -80,7 +83,10 @@ def prepare_features(wavpath, nnet, pred_index=1):
     spec = stft(sig)
     mag = np.real(np.log10(spec))
     X = mag.reshape((1,) + mag.shape)
-    V = nnet.predict(X)[pred_index]
+    if(isinstance(nnet.output, list)):
+        V = nnet.predict(X)[pred_index]
+    else:
+        V = nnet.predict(X)
 
     x = X.reshape((-1, freq))
     v = V.reshape((-1, K))
@@ -200,11 +206,18 @@ def print_pca(wavpath, nnet, num_dims, wav_out=None):
     egs = np.random.randint(len(v), size=2000)
     pca.fit(v[egs])
     imgs = pca.transform(v).swapaxes(0, 1)
+    
+    def get_mask(img):
+        mask = img.reshape(-1, freq)
+        mask += 0.02
+        mask[mask > 1] = 1
+        return mask
 
     import matplotlib.pyplot as plt
     fig, axes = plt.subplots(k+1, 1)
     for axis, img in zip(axes[:-1], imgs):
-        axis.imshow(img.reshape(-1, freq).swapaxes(0, 1),
+        mask = get_mask(img)
+        axis.imshow(mask.swapaxes(0, 1),
                     origin='lower', cmap='afmhot',
                     vmin=-1, vmax=1)
     x -= np.min(x)
@@ -221,11 +234,7 @@ def print_pca(wavpath, nnet, num_dims, wav_out=None):
     phase = np.imag(spec)
     i = 1
     for img in imgs:
-        mask = img.reshape(-1, freq)
-        mask += 1
-        mask /= 2
-        mask **= 3 + .5
-        mask[mask > 1] = 1
+        mask = get_mask(img)
         sig_out = istft(np.exp(mag + 1j * phase) * mask)
         sig_out -= np.mean(sig_out)
         sig_out /= np.max(sig_out)

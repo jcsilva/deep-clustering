@@ -18,7 +18,10 @@ def print_examples(wavpaths, nnet, db_threshold=None,
     if db_threshold is not None:
         kk += 1
     freq = int(nnet.input.get_shape()[2])
-    K = int(nnet.output[1].get_shape()[2]) // freq
+    if(isinstance(nnet.output, list)):
+        K = int(nnet.output[pred_index].get_shape()[2]) // freq
+    else:
+        K = int(nnet.output.get_shape()[2]) // freq
     sigsum = None
     specs = []
     sigs = []
@@ -43,7 +46,10 @@ def print_examples(wavpaths, nnet, db_threshold=None,
     sigsum = sigsum/np.max(np.abs(sigsum))
     mag = np.real(stft(sigsum, rate))
     X = mag.reshape((1,) + mag.shape)
-    V = nnet.predict(X)[pred_index]
+    if(isinstance(nnet.output, list)):
+        V = nnet.predict(X)[pred_index]
+    else:
+        V = nnet.predict(X)
     x = X.reshape((-1, freq))
     if db_threshold is not None:
         v = V.reshape((-1, freq, K))
