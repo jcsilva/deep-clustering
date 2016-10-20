@@ -7,9 +7,9 @@ Created on Mon Sep 26 15:23:31 2016
 import numpy as np
 import random
 import soundfile as sf
-from scipy.signal import decimate
 from python_speech_features import sigproc
-from config import FRAME_LENGTH, FRAME_SHIFT, TIMESTEPS
+from config import FRAME_LENGTH, FRAME_SHIFT, FRAME_RATE
+from config import TIMESTEPS, DB_THRESHOLD
 
 
 def squared_hann(M):
@@ -26,7 +26,7 @@ def stft(sig, rate):
     return np.log10(np.absolute(spec)+1e-7)  # Log 10 for easier dB calculation
 
 
-def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
+def get_egs(wavlist, min_mix=2, max_mix=3, batch_size=1):
     """
     Generate examples for the neural network from a list of wave files with
     speaker ids. Each line is of type "path speaker", as follows:
@@ -38,14 +38,10 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
     and so on.
     min_mix and max_mix are the minimum and maximum number of examples to
     be mixed for generating a training example
-
-    sil_as_class defines if the threshold-defined background silence will
-    be treated as a separate class
     """
     speaker_wavs = {}
     batch_x = []
     batch_y = []
-    batch_s = []
     batch_count = 0
 
     while True:  # Generate examples indefinitely
@@ -77,9 +73,10 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
             if not speaker_wavs[spk]:
                 del(speaker_wavs[spk])  # Remove empty speakers from dictionary
             sig, rate = sf.read(p)
-            if rate == 16000:
-                sig = decimate(sig, 2, zero_phase=True)
-                rate = 8000
+            if rate != FRAME_RATE:
+                raise Exception("Config specifies " + str(FRAME_RATE) +
+                                "Hz as sample rate, but file " + str(p) +
+                                "is in " + str(rate) + "Hz.")
             sig = sig - np.mean(sig)
             sig = sig/np.max(np.abs(sig))
             sig *= (np.random.random()*1/4 + 3/4)
@@ -100,10 +97,7 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
             specs.append(stft(sig[:len(wavsum)], rate))
         specs = np.array(specs)
 
-        if sil_as_class:
-            nc = max_mix + 1
-        else:
-            nc = max_mix
+        nc = max_mix
 
         # Get dominant spectra indexes, create one-hot outputs
         Y = np.zeros(X.shape + (nc,))
@@ -114,37 +108,15 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
             Y[vals == i] = t
 
         # Create mask for zeroing out gradients from silence components
-        m = np.max(X) - 40./20  # Minus 40dB
-        if sil_as_class:
-            z = np.zeros(nc)
-            z[-1] = 1
-            Y[X < m] = z
-        else:
-            z = np.zeros(nc)
-            Y[X < m] = z
-
-        # EXPERIMENTAL: normalize log spectra as weighted norm vectors instead
-        # of using unit vectors for "hard" classes
-        if sil_as_class:
-            print("This won't work with sil_as_class=True")
-        S = np.zeros(X.shape + (nc,))
-        S[:, :, :len(specs)] = np.transpose(specs, (1, 2, 0))
-        S /= np.linalg.norm(S, axis=2, keepdims=True)
+        m = np.max(X) - DB_THRESHOLD/20.  # Minus 40dB
+        z = np.zeros(nc)
+        Y[X < m] = z
 
         # Generating sequences
         i = 0
         while i + TIMESTEPS < len(X):
-            # only chunks with more than 40% of bins classified as speech
-            # will be used.
-            if sil_as_class:
-                if(np.sum(Y[i:i+TIMESTEPS]) /
-                   (Y[i:i+TIMESTEPS].size/nc) < 0.4):
-                    i += TIMESTEPS//2
-                    continue
-
             batch_x.append(X[i:i+TIMESTEPS])
             batch_y.append(Y[i:i+TIMESTEPS])
-            batch_s.append(S[i:i+TIMESTEPS])
             i += TIMESTEPS//2
 
             batch_count = batch_count+1
@@ -152,25 +124,10 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
             if batch_count == batch_size:
                 inp = np.array(batch_x).reshape((batch_size,
                                                  TIMESTEPS, -1))
-                hard_out = np.array(batch_y).reshape((batch_size,
-                                                      TIMESTEPS, -1))
-                soft_out = np.array(batch_s).reshape((batch_size,
-                                                      TIMESTEPS, -1))
+                out = np.array(batch_y).reshape((batch_size,
+                                                 TIMESTEPS, -1))
                 yield({'input': inp},
-                      {'hard_output': hard_out,
-                       'soft_output': soft_out})
+                      {'kmeans_o': out})
                 batch_x = []
                 batch_y = []
-                batch_s = []
                 batch_count = 0
-
-
-if __name__ == "__main__":
-    a = get_egs('wavlist_short', 2, 2, False)
-    k = 6
-    for i, j in a:
-        print(i.shape, j.shape)
-        print(j[0][0])
-        k -= 1
-        if k == 0:
-            break

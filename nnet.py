@@ -7,17 +7,15 @@ Created on Mon Sep 26 15:23:31 2016
 
 from keras import backend as K
 from keras.models import Model
-from keras.layers import Dropout, Activation, Input, Reshape
-from keras.layers import Dense, LSTM, BatchNormalization
+from keras.layers import Input, Dense, LSTM
 from keras.layers import TimeDistributed, Bidirectional
-from keras.layers.noise import GaussianNoise
-from keras.optimizers import Nadam
 from keras.regularizers import l2
+from keras.optimizers import Nadam
 from keras.models import model_from_json
 from keras.callbacks import ModelCheckpoint
 from feats import get_egs
 
-from config import EMBEDDINGS_DIMENSION, MIN_MIX, MAX_MIX, SIL_AS_CLASS
+from config import EMBEDDINGS_DIMENSION, MIN_MIX, MAX_MIX
 from config import NUM_RLAYERS, SIZE_RLAYERS
 from config import BATCH_SIZE, SAMPLES_PER_EPOCH, NUM_EPOCHS, VALID_SIZE
 from config import DROPOUT, RDROPOUT, L2R, CLIPNORM
@@ -25,9 +23,9 @@ from config import DROPOUT, RDROPOUT, L2R, CLIPNORM
 
 def get_dims(generator, embedding_size):
     inp, out = next(generator)
-    k = MAX_MIX + int(SIL_AS_CLASS)
+    k = MAX_MIX
     inp_shape = (None, inp['input'].shape[-1])
-    out_shape = list(out['hard_output'].shape[1:])
+    out_shape = list(out['kmeans_o'].shape[1:])
     out_shape[-1] *= float(embedding_size)/k
     out_shape[-1] = int(out_shape[-1])
     out_shape = tuple(out_shape)
@@ -70,31 +68,10 @@ def affinitykmeans(Y, V):
 
     V = K.l2_normalize(K.reshape(V, [BATCH_SIZE, -1,
                                      EMBEDDINGS_DIMENSION]), axis=-1)
-    Y = K.reshape(Y, [BATCH_SIZE, -1,
-                      MAX_MIX + int(SIL_AS_CLASS)])
+    Y = K.reshape(Y, [BATCH_SIZE, -1, MAX_MIX])
 
     silence_mask = K.sum(Y, axis=2, keepdims=True)
     V = silence_mask * V
-
-    return norm(dot(T(V), V)) - norm(dot(T(V), Y)) * 2 + norm(dot(T(Y), Y))
-
-
-def affinitypca(Y, V):
-    def norm(tensor):
-        square_tensor = K.square(tensor)
-        frobenius_norm2 = K.sum(square_tensor, axis=(1, 2))
-        return frobenius_norm2
-
-    def dot(x, y):
-        return K.batch_dot(x, y, axes=(2, 1))
-
-    def T(x):
-        return K.permute_dimensions(x, [0, 2, 1])
-
-    V = K.reshape(V, [BATCH_SIZE, -1,
-                      EMBEDDINGS_DIMENSION])
-    Y = K.reshape(Y, [BATCH_SIZE, -1,
-                      MAX_MIX + int(SIL_AS_CLASS)])
 
     return norm(dot(T(V), V)) - norm(dot(T(V), Y)) * 2 + norm(dot(T(Y), Y))
 
@@ -103,12 +80,10 @@ def train_nnet(train_list, valid_list, weights_path=None):
     train_gen = get_egs(train_list,
                         min_mix=MIN_MIX,
                         max_mix=MAX_MIX,
-                        sil_as_class=SIL_AS_CLASS,
                         batch_size=BATCH_SIZE)
     valid_gen = get_egs(valid_list,
                         min_mix=MIN_MIX,
                         max_mix=MAX_MIX,
-                        sil_as_class=SIL_AS_CLASS,
                         batch_size=BATCH_SIZE)
     inp_shape, out_shape = get_dims(train_gen,
                                     EMBEDDINGS_DIMENSION)
@@ -123,26 +98,16 @@ def train_nnet(train_list, valid_list, weights_path=None):
                                dropout_W=DROPOUT,
                                dropout_U=RDROPOUT),
                           input_shape=inp_shape)(x)
-    soft_out = TimeDistributed(Dense(out_shape[-1],
-                                     activation='linear',
+    kmeans_o = TimeDistributed(Dense(out_shape[-1],
+                                     activation='tanh',
                                      W_regularizer=l2(L2R),
                                      b_regularizer=l2(L2R)),
-                               name='soft_output')(x)
-    x = TimeDistributed(Dense(SIZE_RLAYERS,
-                              activation='tanh',
-                              W_regularizer=l2(L2R),
-                              b_regularizer=l2(L2R)))(soft_out)
-    hard_out = TimeDistributed(Dense(out_shape[-1],
-                                     activation='linear',
-                                     W_regularizer=l2(L2R),
-                                     b_regularizer=l2(L2R)),
-                               name='hard_output')(x)
+                               name='kmeans_o')(x)
 
-    model = Model(input=[inp], output=[hard_out, soft_out])
+    model = Model(input=[inp], output=[kmeans_o])
     if weights_path:
         model.load_weights(weights_path)
-    model.compile(loss={'hard_output': affinitykmeans,
-                        'soft_output': affinitypca},
+    model.compile(loss={'kmeans_o': affinitykmeans},
                   optimizer=Nadam(clipnorm=CLIPNORM))
 
     # checkpoint
@@ -163,5 +128,4 @@ def train_nnet(train_list, valid_list, weights_path=None):
                         nb_epoch=NUM_EPOCHS,
                         max_q_size=512,
                         callbacks=callbacks_list)
-    # score = model.evaluate(X_test, y_test, batch_size=16)
     save_model(model, "model")

@@ -5,14 +5,43 @@ Created on Thu Oct  6 15:48:14 2016
 @author: valterf
 """
 from feats import stft
+from config import FRAME_RATE
+
+from itertools import permutations
+
+from sklearn.cluster import KMeans
+import soundfile as sf
+import numpy as np
+import matplotlib.pyplot as plt
 
 
 def print_examples(wavpaths, nnet, db_threshold=None,
                    source_intensities=None,
                    ignore_background=False,
-                   pred_index=1):
-    import soundfile as sf
-    import numpy as np
+                   pred_index=0):
+    """
+    Visualizes the difference between the neural network output and the ground
+    truth from a list of files to be mixed up.
+
+    wavpaths is a list of wavfile paths which should all have sampling rate.
+
+    nnet is a loaded pre-trained model using the "load_model" function from
+    predict.py
+
+    db_threshold is the backgorund silence threshold, if you wish to treat
+    background silence as a "different source"
+
+    source_intensities is a list of floats which weights the source intensities
+    of each file from wavpaths by multiplying its amp. It should have the same
+    length of wavpaths
+
+    ignore_background is used only if db_threshold is specified. It forces all
+    background silence points to the same region, forcing the KMeans algorithm
+    to treat this point as a centroid and as a cluster.
+
+    pred_index is a parameter for multiple output networks, and should be
+    ignored for now.
+    """
     k = len(wavpaths)
     kk = k
     if db_threshold is not None:
@@ -27,9 +56,10 @@ def print_examples(wavpaths, nnet, db_threshold=None,
     sigs = []
     for i, wavpath in enumerate(wavpaths):
         sig, rate = sf.read(wavpath)
-        if rate != 8000:
-            raise Exception("Currently only 8000 Hz audio is supported. " +
-                            "You have provided a {r} Hz one".format(r=rate))
+        if rate != FRAME_RATE:
+            raise Exception("Config specifies " + str(FRAME_RATE) +
+                            "Hz as sample rate, but file " + str(wavpath) +
+                            "is in " + str(rate) + "Hz.")
         sig = sig - np.mean(sig)
         sig = sig/np.max(np.abs(sig))
         if source_intensities is not None:
@@ -57,7 +87,6 @@ def print_examples(wavpaths, nnet, db_threshold=None,
         if ignore_background:
             v[x < m] = 0
     v = V.reshape((-1, K))
-    from sklearn.cluster import KMeans
     km = KMeans(kk)
     eg = km.fit_predict(v)
     ref = np.argmax(specs.reshape((x.size, k)), axis=1)
@@ -72,7 +101,6 @@ def print_examples(wavpaths, nnet, db_threshold=None,
         ref_p[ref == i, i] = 1
     p = None
     s = np.float('Inf')
-    from itertools import permutations
     for pp in permutations(list(range(kk))):
         ss = np.sum(np.abs(ref_p - eg_p[:, pp]))
         if ss < s:
@@ -100,7 +128,6 @@ def print_examples(wavpaths, nnet, db_threshold=None,
     img3 -= np.min(img3)
     img3 **= 3
 
-    import matplotlib.pyplot as plt
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1)
     ax1.imshow(img.swapaxes(0, 1), origin='lower')
     ax2.imshow(img2.swapaxes(0, 1), origin='lower')
