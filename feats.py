@@ -123,17 +123,13 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
             z = np.zeros(nc)
             Y[X < m] = z
 
-        # EXPERIMENTAL: normalize mag spectra as weighted norm vectors instead
+        # EXPERIMENTAL: normalize log spectra as weighted norm vectors instead
         # of using unit vectors for "hard" classes
         if sil_as_class:
             print("This won't work with sil_as_class=True")
-        S = np.transpose(specs, (1, 2, 0))
-        norm = np.linalg.norm(S, axis=2, keepdims=True)
-        S = S/norm
-        m = X - np.min(X)
-        m = m / np.max(m)
-        m = np.expand_dims(m, -1)
-        S *= m
+        S = np.zeros(X.shape + (nc,))
+        S[:, :, :len(specs)] = np.transpose(specs, (1, 2, 0))
+        S /= np.linalg.norm(S, axis=2, keepdims=True)
 
         # Generating sequences
         i = 0
