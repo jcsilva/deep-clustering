@@ -123,7 +123,6 @@ def train_nnet(train_list, valid_list, weights_path=None):
                                dropout_W=DROPOUT,
                                dropout_U=RDROPOUT),
                           input_shape=inp_shape)(x)
-        x = TimeDistributed(BatchNormalization(mode=2))(x)
     soft_out = TimeDistributed(Dense(out_shape[-1],
                                      activation='linear',
                                      W_regularizer=l2(L2R),
