@@ -67,7 +67,7 @@ def istft(X, overlap=FRAME_LENGTH//FRAME_SHIFT):
     return x
 
 
-def prepare_features(wavpath, nnet, pred_index=0):
+def prepare_features(wavpath, nnet, pred_index=1):
     freq = int(nnet.input.get_shape()[2])
     if(isinstance(nnet.output, list)):
         K = int(nnet.output[pred_index].get_shape()[2]) // freq

@@ -4,7 +4,7 @@ Created on Thu Oct  6 15:48:14 2016
 
 @author: valterf
 """
-from feats import stft
+from feats import stft, prepare_enhancement_input
 from config import FRAME_RATE
 
 from itertools import permutations
@@ -15,7 +15,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def print_examples(wavpaths, nnet, db_threshold=None,
+def print_examples(wavpaths, nnet, nnet_enhancement=None,
+                   db_threshold=None,
                    source_intensities=None,
                    ignore_background=False,
                    pred_index=0):
@@ -42,6 +43,7 @@ def print_examples(wavpaths, nnet, db_threshold=None,
     pred_index is a parameter for multiple output networks, and should be
     ignored for now.
     """
+    # Audio preparation, very similar code to feats.py generators
     k = len(wavpaths)
     kk = k
     if db_threshold is not None:
@@ -76,16 +78,23 @@ def print_examples(wavpaths, nnet, db_threshold=None,
     sigsum = sigsum/np.max(np.abs(sigsum))
     mag = np.real(stft(sigsum, rate))
     X = mag.reshape((1,) + mag.shape)
+    # Audio preparation end
+
+    # Predict embeddings
     if(isinstance(nnet.output, list)):
         V = nnet.predict(X)[pred_index]
     else:
         V = nnet.predict(X)
     x = X.reshape((-1, freq))
+
+    # Define thresholded background as a separate class
     if db_threshold is not None:
-        v = V.reshape((-1, freq, K))
         m = np.max(x) - db_threshold / 20.
         if ignore_background:
-            v[x < m] = 0
+            v = V.reshape((-1, freq, K))
+            v[x < m] = 0  # Forcing background embeddings to 0
+
+    # KMeans clustering
     v = V.reshape((-1, K))
     km = KMeans(kk)
     eg = km.fit_predict(v)
@@ -109,6 +118,8 @@ def print_examples(wavpaths, nnet, db_threshold=None,
     eg_p = eg_p[:, p]
     eg = np.argmax(eg_p, axis=1)
 
+    imgs = []
+    # 1st img: Prediction
     imshape = x.shape + (3,)
     img = np.zeros((x.size, 3))
     for i in range(min(k, 3)):
@@ -116,19 +127,33 @@ def print_examples(wavpaths, nnet, db_threshold=None,
     if db_threshold is not None:
         img[eg == kk - 1] = [0, 0, 0]
     img = img.reshape(imshape)
+    imgs.append(img)
 
-    img2 = np.zeros((x.size, 3))
+    # 2nd img: reference
+    img = np.zeros((x.size, 3))
     for i in range(min(k, 3)):
-        img2[ref == i, i] = 1
+        img[ref == i, i] = 1
     if db_threshold is not None:
-        img2[ref == kk - 1] = [0, 0, 0]
-    img2 = img2.reshape(imshape)
+        img[ref == kk - 1] = [0, 0, 0]
+    img = img.reshape(imshape)
+    imgs.append(img)
 
-    img3 = x
-    img3 -= np.min(img3)
-    img3 **= 3
+    # 3rd img: spec (with cubic power for more contrast)
+    img = x
+    img -= np.min(img)
+    img **= 3
+    imgs.append(img)
 
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1)
-    ax1.imshow(img.swapaxes(0, 1), origin='lower')
-    ax2.imshow(img2.swapaxes(0, 1), origin='lower')
-    ax3.imshow(img3.swapaxes(0, 1), origin='lower', cmap='afmhot')
+    if nnet_enhancement is not None:
+        # 4th img and on: specs from enhancement net predictions
+        for r in range(kk):
+            E = prepare_enhancement_input(v, x, km.cluster_centers_, r)
+            img = nnet_enhancement.predict(E.reshape((1,) + E.shape))
+            img = img.reshape((-1, freq))
+            img -= np.min(img)
+            img **= 3
+            imgs.append(img)
+
+    fig, axes = plt.subplots(len(imgs), 1)
+    for img, ax in zip(imgs, axes):
+        ax.imshow(img.swapaxes(0, 1), origin='lower', cmap='afmhot')

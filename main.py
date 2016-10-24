@@ -13,22 +13,22 @@ from predict import separate_sources
 
 
 def main():
-    train_nnet('train', 'valid')
-    model = load_model('model')
-    egs = []
-    current_spk = ""
-    for line in open('test'):
-        line = line.strip().split()
-        if len(line) != 2:
-            continue
-        w, s = line
-        if s != current_spk:
-            egs.append(w)
-            current_spk = s
-            if len(egs) == 2:
-                break
-    print_examples(egs, model, db_threshold=40, ignore_background=True)
-    separate_sources('fm.wav', model, 2, 'fm')
+    train_nnet('wavlist_short', 'wavlist_short')
+#    model = load_model('model')
+#    egs = []
+#    current_spk = ""
+#    for line in open('test'):
+#        line = line.strip().split()
+#        if len(line) != 2:
+#            continue
+#        w, s = line
+#        if s != current_spk:
+#            egs.append(w)
+#            current_spk = s
+#            if len(egs) == 2:
+#                break
+#    print_examples(egs, model, db_threshold=40, ignore_background=True)
+#    separate_sources('fm.wav', model, 2, 'fm')
 
 
 if __name__ == "__main__":
