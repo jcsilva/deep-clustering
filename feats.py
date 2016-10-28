@@ -3,30 +3,72 @@
 Created on Mon Sep 26 15:23:31 2016
 
 @author: jcsilva
+STFT/ISTFT derived from Basj's implementation[1], with minor modifications,
+such as the replacement of the hann window by its root square, as specified in
+the original paper from Hershey et. al. (2015)[2]
+
+[1] http://stackoverflow.com/a/20409020
+[2] https://arxiv.org/abs/1508.04306
 """
 import numpy as np
 import random
 import soundfile as sf
-from scipy.signal import decimate
-from python_speech_features import sigproc
-from config import FRAME_LENGTH, FRAME_SHIFT, TIMESTEPS
+from config import FRAME_RATE, FRAME_LENGTH, FRAME_SHIFT, TIMESTEPS
 
 
-def squared_hann(M):
+def sqrt_hann(M):
     return np.sqrt(np.hanning(M))
 
 
-def stft(sig, rate):
-    frames = sigproc.framesig(sig,
-                              FRAME_LENGTH*rate,
-                              FRAME_SHIFT*rate,
-                              winfunc=squared_hann)
-    spec = np.fft.rfft(frames, int(FRAME_LENGTH*rate))
-    # adding 1e-7 just to avoid problems with log(0)
-    return np.log10(np.absolute(spec)+1e-7)  # Log 10 for easier dB calculation
+def stft(x, fftsize=int(FRAME_LENGTH*FRAME_RATE),
+         overlap=FRAME_LENGTH//FRAME_SHIFT):
+    """
+    Short-time fourier transform.
+        x:
+        input waveform (1D array of samples)
+
+        fftsize:
+        in samples, size of the fft window
+
+        overlap:
+        should be a divisor of fftsize, represents the rate of
+        window superposition (window displacement=fftsize/overlap)
+
+        return: linear domain spectrum (2D complex array)
+    """
+    hop = int(np.round(fftsize / overlap))
+    w = sqrt_hann(fftsize)
+    out = np.array([np.fft.rfft(w*x[i:i+fftsize])
+                    for i in range(0, len(x)-fftsize, hop)])
+    return out
 
 
-def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
+def istft(X, overlap=FRAME_LENGTH//FRAME_SHIFT):
+    """
+    Inverse short-time fourier transform.
+        X:
+        input spectrum (2D complex array)
+
+        overlap:
+        should be a divisor of (X.shape[1] - 1) * 2, represents the rate of
+        window superposition (window displacement=fftsize/overlap)
+
+        return: floating-point waveform samples (1D array)
+    """
+    fftsize = (X.shape[1] - 1) * 2
+    hop = int(np.round(fftsize / overlap))
+    w = sqrt_hann(fftsize)
+    x = np.zeros(X.shape[0]*hop)
+    wsum = np.zeros(X.shape[0]*hop)
+    for n, i in enumerate(range(0, len(x)-fftsize, hop)):
+        x[i:i+fftsize] += np.real(np.fft.irfft(X[n])) * w   # overlap-add
+        wsum[i:i+fftsize] += w ** 2.
+    pos = wsum != 0
+    x[pos] /= wsum[pos]
+    return x
+
+
+def get_egs(wavlist, min_mix=2, max_mix=3, batch_size=1, noiselist=None):
     """
     Generate examples for the neural network from a list of wave files with
     speaker ids. Each line is of type "path speaker", as follows:
@@ -38,11 +80,9 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
     and so on.
     min_mix and max_mix are the minimum and maximum number of examples to
     be mixed for generating a training example
-
-    sil_as_class defines if the threshold-defined background silence will
-    be treated as a separate class
     """
     speaker_wavs = {}
+    noise_wavs = []
     batch_x = []
     batch_y = []
     batch_s = []
@@ -69,6 +109,7 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
                 random.shuffle(speaker_wavs[spk])
         wavsum = None
         sigs = []
+        ampsum = 0.
 
         # Pop wav files from random speakers, store them individually for
         # dominant spectra decision and generate the mixed input
@@ -77,33 +118,76 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
             if not speaker_wavs[spk]:
                 del(speaker_wavs[spk])  # Remove empty speakers from dictionary
             sig, rate = sf.read(p)
-            if rate == 16000:
-                sig = decimate(sig, 2, zero_phase=True)
-                rate = 8000
+            if rate != FRAME_RATE:
+                raise Exception("Config specifies " + str(FRAME_RATE) +
+                                "Hz as sample rate, but file " + str(p) +
+                                "is in " + str(rate) + "Hz.")
             sig = sig - np.mean(sig)
             sig = sig/np.max(np.abs(sig))
-            sig *= (np.random.random()*1/4 + 3/4)
+            r = np.random.random()
+            sig *= r
+            ampsum += r
             if wavsum is None:
                 wavsum = sig
             else:
-                wavsum = wavsum[:len(sig)] + sig[:len(wavsum)]
+                wavlen = min(len(wavsum), len(sig))
+                beg1 = random.randint(0, len(wavsum) - wavlen)
+                beg2 = random.randint(0, len(sig) - wavlen)
+                sig = sig[beg2:wavlen + beg2]
+                wavsum = wavsum[beg1:wavlen + beg1] + sig
+                for i in range(len(sigs)):
+                    sigs[i] = sigs[i][beg1:wavlen + beg1]
             sigs.append(sig)
 
+        # Adding noise with chance of 50% if list is provided
+        if noiselist is not None and random.random() < .5:
+            # Repopulate noise wav list
+            if len(noise_wavs) == 0:
+                f = open(noiselist)
+                for l in f:
+                    l = l.strip()
+                    if len(l) > 0:
+                        noise_wavs.append(l)
+                f.close()
+                random.shuffle(noise_wavs)
+            p = noise_wavs.pop()
+            sig, rate = sf.read(p)
+            if rate != FRAME_RATE:
+                raise Exception("Config specifies " + str(FRAME_RATE) +
+                                "Hz as sample rate, but file " + str(p) +
+                                "is in " + str(rate) + "Hz.")
+            wavlen = min(len(wavsum), len(sig))
+            beg1 = random.randint(0, len(wavsum) - wavlen)
+            beg2 = random.randint(0, len(sig) - wavlen)
+            sig = sig[beg2:wavlen + beg2]
+            sig = sig - np.mean(sig)
+            sig = sig/np.max(np.abs(sig))
+            r = np.random.random()
+            sig *= r
+            ampsum += r
+            sig *= r
+            wavsum = wavsum[beg1:wavlen + beg1] + sig
+            for i in range(len(sigs)):
+                sigs[i] = sigs[i][beg1:wavlen + beg1]
+            sigs.append(sig)
+        for i in range(len(sigs)):
+            sig[i] /= ampsum
+        wavsum /= ampsum
+
         # STFT for mixed signal
-        X = stft(wavsum, rate)
+        X = np.real(np.log10(stft(wavsum) + 1e-7))
         if len(X) <= TIMESTEPS:
             continue
 
         # STFTs for individual signals
         specs = []
         for sig in sigs:
-            specs.append(stft(sig[:len(wavsum)], rate))
+            specs.append(np.real(np.log10(stft(sig) + 1e-7)))
         specs = np.array(specs)
 
-        if sil_as_class:
-            nc = max_mix + 1
-        else:
-            nc = max_mix
+        nc = max_mix
+        if noiselist is not None:
+            nc += 1
 
         # Get dominant spectra indexes, create one-hot outputs
         Y = np.zeros(X.shape + (nc,))
@@ -115,18 +199,11 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
 
         # Create mask for zeroing out gradients from silence components
         m = np.max(X) - 40./20  # Minus 40dB
-        if sil_as_class:
-            z = np.zeros(nc)
-            z[-1] = 1
-            Y[X < m] = z
-        else:
-            z = np.zeros(nc)
-            Y[X < m] = z
+        z = np.zeros(nc)
+        Y[X < m] = z
 
         # EXPERIMENTAL: normalize log spectra as weighted norm vectors instead
         # of using unit vectors for "hard" classes
-        if sil_as_class:
-            print("This won't work with sil_as_class=True")
         S = np.zeros(X.shape + (nc,))
         S[:, :, :len(specs)] = np.transpose(specs, (1, 2, 0))
         S /= np.linalg.norm(S, axis=2, keepdims=True)
@@ -134,14 +211,6 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
         # Generating sequences
         i = 0
         while i + TIMESTEPS < len(X):
-            # only chunks with more than 40% of bins classified as speech
-            # will be used.
-            if sil_as_class:
-                if(np.sum(Y[i:i+TIMESTEPS]) /
-                   (Y[i:i+TIMESTEPS].size/nc) < 0.4):
-                    i += TIMESTEPS//2
-                    continue
-
             batch_x.append(X[i:i+TIMESTEPS])
             batch_y.append(Y[i:i+TIMESTEPS])
             batch_s.append(S[i:i+TIMESTEPS])
@@ -166,10 +235,12 @@ def get_egs(wavlist, min_mix=2, max_mix=3, sil_as_class=True, batch_size=1):
 
 
 if __name__ == "__main__":
-    a = get_egs('wavlist_short', 2, 2, False)
+    a = get_egs('train', 2, 4, 1)
     k = 6
     for i, j in a:
-        print(i.shape, j.shape)
+        print(i['input'].shape,
+              j['hard_output'].shape,
+              j['soft_output'].shape)
         print(j[0][0])
         k -= 1
         if k == 0:

@@ -40,12 +40,12 @@ def print_examples(wavpaths, nnet, db_threshold=None,
             sigsum = sigsum[:len(sig)] + sig[:len(sigsum)]
         sigs.append(sig)
     for sig in sigs:
-        specs.append(np.real(stft(sig[:len(sigsum)], rate)))
+        specs.append(np.real(np.log10(stft(sig[:len(sigsum)]) + 1e-7)))
     specs = np.transpose(np.array(specs), (1, 2, 0))
     sigsum = sigsum - np.mean(sigsum)
     sigsum = sigsum/np.max(np.abs(sigsum))
-    mag = np.real(stft(sigsum, rate))
-    X = mag.reshape((1,) + mag.shape)
+    mag = np.real(np.log10(stft(sigsum) + 1e-7))
+    X = mag.reshape((1, -1, freq))
     if(isinstance(nnet.output, list)):
         V = nnet.predict(X)[pred_index]
     else:

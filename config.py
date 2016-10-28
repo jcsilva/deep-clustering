@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # FFT parameters
+FRAME_RATE = 8000
 FRAME_LENGTH = .032
 FRAME_SHIFT = .008
 TIMESTEPS = 100
@@ -9,7 +10,6 @@ TIMESTEPS = 100
 EMBEDDINGS_DIMENSION = 40
 MIN_MIX = 2
 MAX_MIX = 3
-SIL_AS_CLASS = False
 
 # Neural net topology
 SIZE_RLAYERS = 300

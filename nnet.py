@@ -17,7 +17,7 @@ from keras.models import model_from_json
 from keras.callbacks import ModelCheckpoint
 from feats import get_egs
 
-from config import EMBEDDINGS_DIMENSION, MIN_MIX, MAX_MIX, SIL_AS_CLASS
+from config import EMBEDDINGS_DIMENSION, MIN_MIX, MAX_MIX
 from config import NUM_RLAYERS, SIZE_RLAYERS
 from config import BATCH_SIZE, SAMPLES_PER_EPOCH, NUM_EPOCHS, VALID_SIZE
 from config import DROPOUT, RDROPOUT, L2R, CLIPNORM
@@ -25,7 +25,7 @@ from config import DROPOUT, RDROPOUT, L2R, CLIPNORM
 
 def get_dims(generator, embedding_size):
     inp, out = next(generator)
-    k = MAX_MIX + int(SIL_AS_CLASS)
+    k = out['hard_output'].shape[-1] / inp['input'].shape[-1]
     inp_shape = (None, inp['input'].shape[-1])
     out_shape = list(out['hard_output'].shape[1:])
     out_shape[-1] *= float(embedding_size)/k
@@ -70,8 +70,7 @@ def affinitykmeans(Y, V):
 
     V = K.l2_normalize(K.reshape(V, [BATCH_SIZE, -1,
                                      EMBEDDINGS_DIMENSION]), axis=-1)
-    Y = K.reshape(Y, [BATCH_SIZE, -1,
-                      MAX_MIX + int(SIL_AS_CLASS)])
+    Y = K.reshape(Y, [BATCH_SIZE, -1, MAX_MIX + 1])
 
     silence_mask = K.sum(Y, axis=2, keepdims=True)
     V = silence_mask * V
@@ -94,7 +93,7 @@ def affinitypca(Y, V):
     V = K.reshape(V, [BATCH_SIZE, -1,
                       EMBEDDINGS_DIMENSION])
     Y = K.reshape(Y, [BATCH_SIZE, -1,
-                      MAX_MIX + int(SIL_AS_CLASS)])
+                      MAX_MIX + 1])
 
     return norm(dot(T(V), V)) - norm(dot(T(V), Y)) * 2 + norm(dot(T(Y), Y))
 
@@ -103,13 +102,13 @@ def train_nnet(train_list, valid_list, weights_path=None):
     train_gen = get_egs(train_list,
                         min_mix=MIN_MIX,
                         max_mix=MAX_MIX,
-                        sil_as_class=SIL_AS_CLASS,
-                        batch_size=BATCH_SIZE)
+                        batch_size=BATCH_SIZE,
+                        noiselist='ntrain')
     valid_gen = get_egs(valid_list,
                         min_mix=MIN_MIX,
                         max_mix=MAX_MIX,
-                        sil_as_class=SIL_AS_CLASS,
-                        batch_size=BATCH_SIZE)
+                        batch_size=BATCH_SIZE,
+                        noiselist='nvalid')
     inp_shape, out_shape = get_dims(train_gen,
                                     EMBEDDINGS_DIMENSION)
 
@@ -121,8 +120,8 @@ def train_nnet(train_list, valid_list, weights_path=None):
                                U_regularizer=l2(L2R),
                                b_regularizer=l2(L2R),
                                dropout_W=DROPOUT,
-                               dropout_U=RDROPOUT),
-                          input_shape=inp_shape)(x)
+                               dropout_U=RDROPOUT,
+                               consume_less='gpu'))(x)
     soft_out = TimeDistributed(Dense(out_shape[-1],
                                      activation='linear',
                                      W_regularizer=l2(L2R),
