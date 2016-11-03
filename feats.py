@@ -3,27 +3,70 @@
 Created on Mon Sep 26 15:23:31 2016
 
 @author: jcsilva
+STFT/ISTFT derived from Basj's implementation[1], with minor modifications,
+such as the replacement of the hann window by its root square, as specified in
+the original paper from Hershey et. al. (2015)[2]
+
+[1] http://stackoverflow.com/a/20409020
+[2] https://arxiv.org/abs/1508.04306
 """
 import numpy as np
 import random
 import soundfile as sf
-from python_speech_features import sigproc
 from config import FRAME_LENGTH, FRAME_SHIFT, FRAME_RATE
 from config import TIMESTEPS, DB_THRESHOLD
 
 
-def squared_hann(M):
+def sqrt_hann(M):
     return np.sqrt(np.hanning(M))
 
 
-def stft(sig, rate):
-    frames = sigproc.framesig(sig,
-                              FRAME_LENGTH*rate,
-                              FRAME_SHIFT*rate,
-                              winfunc=squared_hann)
-    spec = np.fft.rfft(frames, int(FRAME_LENGTH*rate))
-    # adding 1e-7 just to avoid problems with log(0)
-    return np.log10(np.absolute(spec)+1e-7)  # Log 10 for easier dB calculation
+def stft(x, fftsize=int(FRAME_LENGTH*FRAME_RATE),
+         overlap=FRAME_LENGTH//FRAME_SHIFT):
+    """
+    Short-time fourier transform.
+        x:
+        input waveform (1D array of samples)
+
+        fftsize:
+        in samples, size of the fft window
+
+        overlap:
+        should be a divisor of fftsize, represents the rate of
+        window superposition (window displacement=fftsize/overlap)
+
+        return: linear domain spectrum (2D complex array)
+    """
+    hop = int(np.round(fftsize / overlap))
+    w = sqrt_hann(fftsize)
+    out = np.array([np.fft.rfft(w*x[i:i+fftsize])
+                    for i in range(0, len(x)-fftsize, hop)])
+    return out
+
+
+def istft(X, overlap=FRAME_LENGTH//FRAME_SHIFT):
+    """
+    Inverse short-time fourier transform.
+        X:
+        input spectrum (2D complex array)
+
+        overlap:
+        should be a divisor of (X.shape[1] - 1) * 2, represents the rate of
+        window superposition (window displacement=fftsize/overlap)
+
+        return: floating-point waveform samples (1D array)
+    """
+    fftsize = (X.shape[1] - 1) * 2
+    hop = int(np.round(fftsize / overlap))
+    w = sqrt_hann(fftsize)
+    x = np.zeros(X.shape[0]*hop)
+    wsum = np.zeros(X.shape[0]*hop)
+    for n, i in enumerate(range(0, len(x)-fftsize, hop)):
+        x[i:i+fftsize] += np.real(np.fft.irfft(X[n])) * w   # overlap-add
+        wsum[i:i+fftsize] += w ** 2.
+    pos = wsum != 0
+    x[pos] /= wsum[pos]
+    return x
 
 
 def get_egs(wavlist, min_mix=2, max_mix=3, batch_size=1):
@@ -87,14 +130,17 @@ def get_egs(wavlist, min_mix=2, max_mix=3, batch_size=1):
             sigs.append(sig)
 
         # STFT for mixed signal
-        X = stft(wavsum, rate)
+        def get_logspec(sig):
+            return np.log10(np.absolute(stft(sig)) + 1e-7)
+
+        X = get_logspec(wavsum)
         if len(X) <= TIMESTEPS:
             continue
 
         # STFTs for individual signals
         specs = []
         for sig in sigs:
-            specs.append(stft(sig[:len(wavsum)], rate))
+            specs.append(get_logspec(sig[:len(wavsum)]))
         specs = np.array(specs)
 
         nc = max_mix
@@ -131,3 +177,9 @@ def get_egs(wavlist, min_mix=2, max_mix=3, batch_size=1):
                 batch_x = []
                 batch_y = []
                 batch_count = 0
+
+
+if __name__ == "__main__":
+    x, y = next(get_egs('train', batch_size=50))
+    print(x['input'].shape)
+    print(y['kmeans_o'].shape)

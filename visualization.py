@@ -54,6 +54,10 @@ def print_examples(wavpaths, nnet, db_threshold=None,
     sigsum = None
     specs = []
     sigs = []
+
+    def get_logspec(sig):
+        return np.log10(np.absolute(stft(sig)) + 1e-7)
+
     for i, wavpath in enumerate(wavpaths):
         sig, rate = sf.read(wavpath)
         if rate != FRAME_RATE:
@@ -70,11 +74,11 @@ def print_examples(wavpaths, nnet, db_threshold=None,
             sigsum = sigsum[:len(sig)] + sig[:len(sigsum)]
         sigs.append(sig)
     for sig in sigs:
-        specs.append(np.real(stft(sig[:len(sigsum)], rate)))
+        specs.append(get_logspec(sig[:len(sigsum)]))
     specs = np.transpose(np.array(specs), (1, 2, 0))
     sigsum = sigsum - np.mean(sigsum)
     sigsum = sigsum/np.max(np.abs(sigsum))
-    mag = np.real(stft(sigsum, rate))
+    mag = get_logspec(sigsum)
     X = mag.reshape((1,) + mag.shape)
     if(isinstance(nnet.output, list)):
         V = nnet.predict(X)[pred_index]
