@@ -13,6 +13,7 @@ the original paper from Hershey et. al. (2015)[2]
 import numpy as np
 import random
 import soundfile as sf
+from copy import deepcopy
 from config import FRAME_LENGTH, FRAME_SHIFT, FRAME_RATE
 from config import TIMESTEPS, DB_THRESHOLD
 
@@ -69,52 +70,74 @@ def istft(X, overlap=FRAME_LENGTH//FRAME_SHIFT):
     return x
 
 
-def get_egs(wavlist, min_mix=2, max_mix=3, batch_size=1):
-    """
-    Generate examples for the neural network from a list of wave files with
-    speaker ids. Each line is of type "path speaker", as follows:
+def mix_noise(bg_data, spk_data, min_snr=5.0, max_snr=20.0, min_delta=0.001):
 
-    path/to/1st.wav spk1
-    path/to/2nd.wav spk2
-    path/to/3rd.wav spk1
+    # From dB to linear scale
+    min_dba = np.sqrt(10.**(min_snr/10.))
+    max_dba = np.sqrt(10.**(max_snr/10.))
 
-    and so on.
-    min_mix and max_mix are the minimum and maximum number of examples to
-    be mixed for generating a training example
+    # Calculates the histogram from the signal, counts all occurences
+    # of deltas below the minimum threshold, discards them from the
+    # final count
+    deltas = np.abs(spk_data[1:] - spk_data[:-1])
+    max_d = np.max(deltas)
+    vad = np.histogram(np.abs(spk_data[1:] - spk_data[:-1]),
+                       bins=[
+                       0,
+                       max_d*min_delta,
+                       float('Inf')
+                       ])[0][1]
+    spk_en = np.sum(np.square(spk_data)) / vad
+
+    # Samples a random sequence from the bg noise waveform
+    bg_en = 0.0
+    q = 0.0
+    while(bg_en <= 0 or q == 0):
+        beg = random.randint(0, len(bg_data) - len(spk_data))
+        bg_en = np.mean(np.square(bg_data[beg:beg + len(spk_data)]))
+        q = random.uniform(min_dba, max_dba)
+
+    # Superposition with a random ratio from the snr range
+    ratio = np.sqrt(abs(spk_en / bg_en)) / q
+    noisy = spk_data + bg_data[beg:beg + len(spk_data)] * ratio
+
+    return noisy
+
+
+def get_egs(speechlist, noiselist, batch_size=1):
     """
-    speaker_wavs = {}
+    Generate examples for the neural network from a list of clean speech
+    and noise audio files
+    """
+    speech_paths = []
+    noise_paths = []
     batch_x = []
     batch_y = []
     batch_count = 0
 
+    def get_logspec(x):
+        return np.log10(np.absolute(stft(x)) + 1e-7)
+
     while True:  # Generate examples indefinitely
-        # Select number of files to mix
-        k = np.random.randint(min_mix, max_mix+1)
-        if k > len(speaker_wavs):
-            # Reading wav files list and separating per speaker
-            speaker_wavs = {}
-            f = open(wavlist)
-            for line in f:
-                line = line.strip().split()
-                if len(line) != 2:
-                    continue
-                p, spk = line
-                if spk not in speaker_wavs:
-                    speaker_wavs[spk] = []
-                speaker_wavs[spk].append(p)
-            f.close()
-            # Randomizing wav lists
-            for spk in speaker_wavs:
-                random.shuffle(speaker_wavs[spk])
-        wavsum = None
+        for paths, wavlist in [(speech_paths, speechlist),
+                               (noise_paths, noiselist)]:
+            if len(paths) == 0:
+                # Reading wav lists
+                f = open(wavlist)
+                for line in f:
+                    line = line.strip()
+                    if len(line) == 0:
+                        continue
+                    paths.append(line)
+                f.close()
+                # Randomizing wav lists
+                random.shuffle(paths)
         sigs = []
 
-        # Pop wav files from random speakers, store them individually for
-        # dominant spectra decision and generate the mixed input
-        for spk in random.sample(speaker_wavs.keys(), k):
-            p = speaker_wavs[spk].pop()
-            if not speaker_wavs[spk]:
-                del(speaker_wavs[spk])  # Remove empty speakers from dictionary
+        # Pop wav files from speech and noisy datasets and mix them
+        sigs = []
+        for paths in [speech_paths, noise_paths]:
+            p = paths.pop()
             sig, rate = sf.read(p)
             if rate != FRAME_RATE:
                 raise Exception("Config specifies " + str(FRAME_RATE) +
@@ -122,41 +145,16 @@ def get_egs(wavlist, min_mix=2, max_mix=3, batch_size=1):
                                 "is in " + str(rate) + "Hz.")
             sig = sig - np.mean(sig)
             sig = sig/np.max(np.abs(sig))
-            sig *= (np.random.random()*1/4 + 3/4)
-            if wavsum is None:
-                wavsum = sig
-            else:
-                wavsum = wavsum[:len(sig)] + sig[:len(wavsum)]
-            sigs.append(sig)
+            sigs.append(deepcopy(sig))
+        clean, bg_data = sigs
+        noisy = mix_noise(bg_data, clean)
 
-        # STFT for mixed signal
-        def get_logspec(sig):
-            return np.log10(np.absolute(stft(sig)) + 1e-7)
-
-        X = get_logspec(wavsum)
+        # Get input and output
+        X = get_logspec(noisy)
+        Y = get_logspec(clean)
+        Y = X - Y
         if len(X) <= TIMESTEPS:
             continue
-
-        # STFTs for individual signals
-        specs = []
-        for sig in sigs:
-            specs.append(get_logspec(sig[:len(wavsum)]))
-        specs = np.array(specs)
-
-        nc = max_mix
-
-        # Get dominant spectra indexes, create one-hot outputs
-        Y = np.zeros(X.shape + (nc,))
-        vals = np.argmax(specs, axis=0)
-        for i in range(k):
-            t = np.zeros(nc)
-            t[i] = 1
-            Y[vals == i] = t
-
-        # Create mask for zeroing out gradients from silence components
-        m = np.max(X) - DB_THRESHOLD/20.  # Minus 40dB
-        z = np.zeros(nc)
-        Y[X < m] = z
 
         # Generating sequences
         i = 0
@@ -173,13 +171,13 @@ def get_egs(wavlist, min_mix=2, max_mix=3, batch_size=1):
                 out = np.array(batch_y).reshape((batch_size,
                                                  TIMESTEPS, -1))
                 yield({'input': inp},
-                      {'kmeans_o': out})
+                      {'irm': out})
                 batch_x = []
                 batch_y = []
                 batch_count = 0
 
 
 if __name__ == "__main__":
-    x, y = next(get_egs('train', batch_size=50))
+    x, y = next(get_egs('wavlist', 'noisel', batch_size=50))
     print(x['input'].shape)
-    print(y['kmeans_o'].shape)
+    print(y['irm'].shape)

@@ -7,20 +7,15 @@ FRAME_SHIFT = .008
 TIMESTEPS = 100
 DB_THRESHOLD = 40
 
-# Clustering parameters
-EMBEDDINGS_DIMENSION = 40
-MIN_MIX = 2
-MAX_MIX = 3
-
 # Neural net topology
-SIZE_RLAYERS = 300
+SIZE_RLAYERS = 30
 NUM_RLAYERS = 2
 
 # Training parameters
-BATCH_SIZE = 128
-SAMPLES_PER_EPOCH = 8192
-NUM_EPOCHS = 200
-VALID_SIZE = 512
+BATCH_SIZE = 10
+SAMPLES_PER_EPOCH = 100
+NUM_EPOCHS = 50
+VALID_SIZE = 10
 
 # Regularization parameters
 DROPOUT = 0.5              # Feed forward dropout
