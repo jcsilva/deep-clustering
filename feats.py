@@ -154,7 +154,7 @@ def get_egs(wavlist, min_mix=2, max_mix=3, batch_size=1):
             Y[vals == i] = t
 
         # Create mask for zeroing out gradients from silence components
-        m = np.max(X) - DB_THRESHOLD/20.  # Minus 40dB
+        m = np.max(X) - DB_THRESHOLD/20.  # From dB to log10 power
         z = np.zeros(nc)
         Y[X < m] = z
 

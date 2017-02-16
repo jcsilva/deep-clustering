@@ -14,8 +14,7 @@ Requirements
   * pysoundfile (pip install pysoundfile)
   * numpy (conda install numpy)
   * scikit-learn (conda install scikit-learn)
-  * matplotlib (conda install matplotlib)
-  * python\_speech\_features (pip install python\_speech\_features)
+  * matplotlib (conda install matplotlib) (only used for visualization)
 
 
 Training the network
@@ -30,13 +29,19 @@ path/to/audioFile3 spk1
 spk1, spk2 identifies the speaker that uttered the recorded sentence. 
 
 
-The current implementation works with audio files recorded at 16 kHz and 8 kHz. It was already tested with flac and wav files, but it should work with all formats supported by [pysoundfile/libsndfile](http://www.mega-nerd.com/libsndfile/#Features).
+The current implementation should work with any sample rate, but experiments were conducted only with 8kHz audio. It was already tested with flac and wav files, but it should work with all formats supported by [pysoundfile/libsndfile](http://www.mega-nerd.com/libsndfile/#Features).
 
 
 After creating train\_list and valid\_list, you may start training the network with the command:
 ```
-python keras-speech-separation-batch.py
+python main.py
 ```
+Please check the main script if you wish to use other features from this project, such
+as output visualization and prediciton.
+
+
+As of February, 2017, this project is halted, but we are still open to feedback and questions.
+
 
 References
 ----------

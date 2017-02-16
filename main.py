@@ -17,6 +17,10 @@ def main():
     model = load_model('model')
     egs = []
     current_spk = ""
+
+    # From here on, all the code does is get 2 random speakers from the test
+    # set and visualize the outputs and references. You need to have matplotlib
+    # installed for this to work.
     for line in open('test'):
         line = line.strip().split()
         if len(line) != 2:
@@ -28,7 +32,10 @@ def main():
             if len(egs) == 2:
                 break
     print_examples(egs, model, db_threshold=40, ignore_background=True)
-    separate_sources('fm.wav', model, 2, 'fm')
+    
+    # If you wish to test source separation, generate a mixed 'mixed.wav'
+    # file and test with the following line
+    # separate_sources('mixed.wav', model, 2, 'out')
 
 
 if __name__ == "__main__":
